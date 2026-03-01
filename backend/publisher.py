@@ -1,7 +1,7 @@
 """
 多平台内容发布模块
 基于 Playwright 浏览器自动化实现合规发布
-支持：知乎、微信公众号、百家号、今日头条、小红书
+支持：知乎、微信公众号、百家号、今日头条、小红书、微博、B站、抖音
 """
 import asyncio
 import json
@@ -30,7 +30,8 @@ PLATFORM_CONFIGS = {
         "publish_url": "https://zhuanlan.zhihu.com/write",
         "cookie_file": "zhihu_cookies.json",
         "icon": "🔵",
-        "type": "article"
+        "type": "article",
+        "content_type": "长文深度"
     },
     "wechat": {
         "name": "微信公众号",
@@ -38,7 +39,8 @@ PLATFORM_CONFIGS = {
         "publish_url": "https://mp.weixin.qq.com/cgi-bin/appmsg",
         "cookie_file": "wechat_cookies.json",
         "icon": "🟢",
-        "type": "article"
+        "type": "article",
+        "content_type": "情感共鸣"
     },
     "baijia": {
         "name": "百家号",
@@ -46,7 +48,8 @@ PLATFORM_CONFIGS = {
         "publish_url": "https://baijiahao.baidu.com/builder/rc/edit",
         "cookie_file": "baijia_cookies.json",
         "icon": "🔴",
-        "type": "article"
+        "type": "article",
+        "content_type": "资讯SEO"
     },
     "toutiao": {
         "name": "今日头条",
@@ -54,7 +57,8 @@ PLATFORM_CONFIGS = {
         "publish_url": "https://mp.toutiao.com/profile_v4/graphic/publish",
         "cookie_file": "toutiao_cookies.json",
         "icon": "🟠",
-        "type": "article"
+        "type": "article",
+        "content_type": "移动资讯"
     },
     "xiaohongshu": {
         "name": "小红书",
@@ -62,7 +66,8 @@ PLATFORM_CONFIGS = {
         "publish_url": "https://creator.xiaohongshu.com/publish/publish",
         "cookie_file": "xhs_cookies.json",
         "icon": "🔴",
-        "type": "note"
+        "type": "note",
+        "content_type": "种草笔记"
     },
     "weibo": {
         "name": "微博",
@@ -70,7 +75,26 @@ PLATFORM_CONFIGS = {
         "publish_url": "https://weibo.com/",
         "cookie_file": "weibo_cookies.json",
         "icon": "🟡",
-        "type": "post"
+        "type": "post",
+        "content_type": "话题互动"
+    },
+    "bilibili": {
+        "name": "B站专栏",
+        "login_url": "https://www.bilibili.com/",
+        "publish_url": "https://member.bilibili.com/platform/upload/text/edit",
+        "cookie_file": "bilibili_cookies.json",
+        "icon": "🔵",
+        "type": "article",
+        "content_type": "年轻干货"
+    },
+    "douyin": {
+        "name": "抖音图文",
+        "login_url": "https://creator.douyin.com/",
+        "publish_url": "https://creator.douyin.com/creator-micro/content/upload",
+        "cookie_file": "douyin_cookies.json",
+        "icon": "⚫",
+        "type": "note",
+        "content_type": "极简冲击"
     }
 }
 
@@ -135,31 +159,25 @@ class ZhihuPublisher(PlatformPublisher):
             page = await context.new_page()
 
             try:
-                # 加载 Cookie
                 if not await self.load_cookies(page):
                     return {"success": False, "error": "未登录，请先扫码登录知乎账号"}
 
-                # 访问写作页面
                 await page.goto(self.config["publish_url"], wait_until="networkidle", timeout=30000)
                 await asyncio.sleep(2)
 
-                # 检查是否需要重新登录
                 if "signin" in page.url or "login" in page.url:
                     return {"success": False, "error": "Cookie 已过期，请重新登录"}
 
-                # 输入标题
                 title_input = await page.wait_for_selector('input[placeholder*="标题"]', timeout=10000)
                 await title_input.click()
                 await title_input.fill(title)
                 await asyncio.sleep(0.5)
 
-                # 输入内容（知乎编辑器）
                 editor = await page.wait_for_selector('.DraftEditor-editorContainer', timeout=10000)
                 await editor.click()
-                await page.keyboard.type(content[:4000])  # 知乎限制
+                await page.keyboard.type(content[:4000])
                 await asyncio.sleep(1)
 
-                # 点击发布按钮
                 publish_btn = await page.wait_for_selector('button:has-text("发布")', timeout=5000)
                 await publish_btn.click()
                 await asyncio.sleep(3)
@@ -173,7 +191,6 @@ class ZhihuPublisher(PlatformPublisher):
                 await browser.close()
 
     def _mock_publish(self, title: str, platform: str) -> Dict[str, Any]:
-        """模拟发布（测试用）"""
         logger.info(f"[模拟发布] 平台: {platform}, 标题: {title}")
         return {
             "success": True,
@@ -209,7 +226,6 @@ class BaijiahaoPublisher(PlatformPublisher):
                 if "login" in page.url:
                     return {"success": False, "error": "Cookie 已过期，请重新登录"}
 
-                # 百家号编辑器操作
                 title_input = await page.wait_for_selector('input[placeholder*="标题"]', timeout=10000)
                 await title_input.fill(title)
 
@@ -244,7 +260,6 @@ class PublisherManager:
         publisher_class = cls.PUBLISHERS.get(platform)
         if publisher_class:
             return publisher_class()
-        # 通用发布器（模拟）
         return GenericPublisher(platform)
 
     @classmethod
@@ -260,7 +275,7 @@ class PublisherManager:
                     logger.info(f"正在发布到 {PLATFORM_CONFIGS.get(platform, {}).get('name', platform)}...")
                     result = await publisher.publish(title, content, tags, scheduled_time)
                     results[platform] = result
-                    await asyncio.sleep(2)  # 平台间间隔
+                    await asyncio.sleep(2)
                 except Exception as e:
                     results[platform] = {"success": False, "error": str(e)}
             else:
@@ -278,6 +293,7 @@ class PublisherManager:
                 "name": config["name"],
                 "icon": config.get("icon", "⚪"),
                 "type": config.get("type", "article"),
+                "content_type": config.get("content_type", ""),
                 "login_url": config.get("login_url", ""),
                 "logged_in": cookie_path.exists(),
                 "cookie_file": str(cookie_path)

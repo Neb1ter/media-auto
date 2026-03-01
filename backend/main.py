@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from loguru import logger
@@ -27,10 +27,13 @@ from ai_creator import AICreator, PLATFORM_STYLES
 from publisher import PublisherManager, PLATFORM_CONFIGS
 
 # ===================== 初始化 =====================
+BASE_DIR = Path(__file__).parent.parent
+FRONTEND_DIR = BASE_DIR / "frontend"
+
 app = FastAPI(
     title="自媒体运营自动化平台",
     description="AI 驱动的多平台内容创作与发布管理系统",
-    version="1.0.0"
+    version="2.0.0"
 )
 
 app.add_middleware(
@@ -43,6 +46,11 @@ app.add_middleware(
 
 # 初始化数据库
 init_db()
+
+# 挂载前端静态资源
+if (FRONTEND_DIR / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIR / "assets")), name="assets")
+
 
 # ===================== Pydantic 模型 =====================
 
@@ -103,15 +111,30 @@ def get_ai_creator(db: Session) -> AICreator:
     return AICreator()
 
 
-# ===================== API 路由 =====================
+# ===================== 前端路由 =====================
 
 @app.get("/")
 async def root():
-    return {"message": "自媒体运营自动化平台 API", "version": "1.0.0", "status": "running"}
+    """根路径返回前端页面"""
+    index_file = FRONTEND_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(str(index_file))
+    return {"message": "自媒体运营自动化平台 API", "version": "2.0.0", "status": "running", "docs": "/docs"}
+
+@app.get("/ui")
+@app.get("/ui/{path:path}")
+async def serve_frontend(path: str = ""):
+    index_file = FRONTEND_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(str(index_file))
+    raise HTTPException(status_code=404, detail="前端文件未找到")
+
+
+# ===================== API 路由 =====================
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+    return {"status": "ok", "timestamp": datetime.now().isoformat(), "version": "2.0.0"}
 
 
 # ---- AI 内容创作 ----
@@ -150,6 +173,7 @@ async def generate_article(req: GenerateArticleRequest, db: Session = Depends(ge
             content=result["content"],
             summary=result.get("summary", ""),
             tags="",
+            category=result.get("platform_name", ""),
             ai_generated=True,
             word_count=result.get("word_count", 0),
             status="draft"
@@ -175,7 +199,7 @@ async def rewrite_article(req: RewriteRequest, db: Session = Depends(get_db)):
 
 @app.post("/api/ai/adapt")
 async def adapt_article(req: AdaptRequest, db: Session = Depends(get_db)):
-    """一键适配多平台"""
+    """一键适配多平台（深度差异化）"""
     try:
         creator = get_ai_creator(db)
         results = creator.adapt_for_platform(req.title, req.content, req.platforms)
@@ -321,7 +345,6 @@ async def publish_article(req: PublishRequest, background_tasks: BackgroundTasks
         db.add(task)
         tasks.append(task)
     db.commit()
-
     task_ids = [t.id for t in tasks]
 
     # 后台执行发布
@@ -342,7 +365,6 @@ async def publish_article(req: PublishRequest, background_tasks: BackgroundTasks
                     task.result_url = result.get("url", "")
                     if result.get("success"):
                         task.published_at = datetime.now()
-                        # 更新文章状态
                         a = db2.query(Article).filter(Article.id == req.article_id).first()
                         if a:
                             a.status = "published"
@@ -449,7 +471,6 @@ async def get_stats(db: Session = Depends(get_db)):
     success_tasks = db.query(PublishTask).filter(PublishTask.status == "success").count()
     failed_tasks = db.query(PublishTask).filter(PublishTask.status == "failed").count()
 
-    # 平台发布分布
     platform_stats = {}
     for task in db.query(PublishTask).filter(PublishTask.status == "success").all():
         platform_name = PLATFORM_CONFIGS.get(task.platform, {}).get("name", task.platform)
@@ -478,8 +499,20 @@ async def get_stats(db: Session = Depends(get_db)):
 
 @app.get("/api/platform-styles")
 async def get_platform_styles():
-    """获取平台风格配置"""
-    return {"styles": PLATFORM_STYLES}
+    """获取平台风格配置（含差异化说明）"""
+    styles_info = {}
+    for key, style in PLATFORM_STYLES.items():
+        styles_info[key] = {
+            "name": style["name"],
+            "icon": style.get("icon", "⚪"),
+            "style": style["style"],
+            "tone": style.get("tone", ""),
+            "max_length": style["max_length"],
+            "min_length": style.get("min_length", 0),
+            "format_hint": style["format_hint"],
+            "special_rules": style.get("special_rules", []),
+        }
+    return {"styles": styles_info}
 
 
 if __name__ == "__main__":
