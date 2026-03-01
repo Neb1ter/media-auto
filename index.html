@@ -1,600 +1,692 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>自媒体运营自动化平台 | Media-Auto</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <style>
-    [v-cloak] { display: none; }
-    .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-    .card-hover { transition: all 0.2s ease; }
-    .card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
-    .prose { max-width: none; }
-    .prose h1 { font-size: 1.5rem; font-weight: 700; margin: 1rem 0 0.5rem; }
-    .prose h2 { font-size: 1.25rem; font-weight: 600; margin: 0.8rem 0 0.4rem; }
-    .prose h3 { font-size: 1.1rem; font-weight: 600; margin: 0.6rem 0 0.3rem; }
-    .prose p { margin: 0.5rem 0; line-height: 1.7; }
-    .prose ul, .prose ol { padding-left: 1.5rem; margin: 0.5rem 0; }
-    .prose li { margin: 0.2rem 0; }
-    .prose strong { font-weight: 700; }
-    .prose hr { border-color: #e5e7eb; margin: 1rem 0; }
-    .prose blockquote { border-left: 4px solid #667eea; padding-left: 1rem; color: #6b7280; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-    .status-online { background: #10b981; }
-    .status-offline { background: #ef4444; }
-    .tab-active { border-bottom: 2px solid #667eea; color: #667eea; font-weight: 600; }
-    textarea { resize: vertical; }
-    .platform-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
-    .animate-pulse-slow { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
-    .loading-dots::after { content: ''; animation: dots 1.5s infinite; }
-    @keyframes dots { 0%,20%{content:'.'} 40%{content:'..'} 60%,100%{content:'...'} }
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: #f1f5f9; }
-    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-  </style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>自媒体运营自动化平台 | Media-Auto</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px;-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:#f1f5f9;color:#1e293b;min-height:100vh;line-height:1.5}
+a{color:inherit;text-decoration:none}
+button{cursor:pointer;border:none;background:none;font-family:inherit;font-size:inherit}
+input,select,textarea{font-family:inherit;font-size:inherit;outline:none}
+img{max-width:100%;display:block}
+
+/* Layout */
+.nav{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:0 24px;height:60px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.nav-brand{display:flex;align-items:center;gap:10px}
+.nav-brand-icon{font-size:24px}
+.nav-brand-title{font-size:16px;font-weight:700;line-height:1.2}
+.nav-brand-sub{font-size:11px;color:rgba(255,255,255,.75)}
+.nav-badges{display:flex;align-items:center;gap:8px}
+.nav-badge{background:rgba(255,255,255,.2);padding:3px 10px;border-radius:20px;font-size:11px}
+.nav-link{background:rgba(255,255,255,.2);padding:3px 10px;border-radius:20px;font-size:11px;transition:.2s}
+.nav-link:hover{background:rgba(255,255,255,.35)}
+
+.layout{display:flex;gap:20px;max-width:1200px;margin:0 auto;padding:20px 16px}
+.sidebar{width:200px;flex-shrink:0}
+.sidebar-nav{background:#fff;border-radius:12px;padding:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);position:sticky;top:80px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:13px;color:#475569;transition:.15s;margin-bottom:2px}
+.nav-item:hover{background:#f8fafc}
+.nav-item.active{background:#ede9fe;color:#7c3aed;font-weight:600}
+.nav-item-icon{font-size:16px;width:20px;text-align:center}
+.sidebar-platforms{margin-top:16px;padding-top:12px;border-top:1px solid #f1f5f9}
+.sidebar-label{font-size:11px;color:#94a3b8;padding:0 12px;margin-bottom:6px;font-weight:500;text-transform:uppercase;letter-spacing:.5px}
+.platform-item{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:12px;color:#64748b}
+.platform-item-icon{font-size:14px}
+.dot{width:7px;height:7px;border-radius:50%;margin-left:auto;flex-shrink:0}
+.dot-on{background:#10b981}
+.dot-off{background:#ef4444}
+
+.main{flex:1;min-width:0}
+
+/* Cards */
+.card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:16px}
+.card-title{font-size:15px;font-weight:600;color:#334155;margin-bottom:16px}
+.page-title{font-size:18px;font-weight:700;color:#1e293b;margin-bottom:16px}
+
+/* Stats grid */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.stat-card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.08);transition:.2s}
+.stat-card:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.12)}
+.stat-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.stat-icon{font-size:22px}
+.stat-trend{font-size:11px;padding:2px 7px;border-radius:20px}
+.trend-up{background:#f0fdf4;color:#16a34a}
+.trend-none{background:#f8fafc;color:#94a3b8}
+.stat-value{font-size:26px;font-weight:700;color:#1e293b}
+.stat-label{font-size:12px;color:#94a3b8;margin-top:2px}
+
+/* Platform grid */
+.platform-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.platform-card{display:flex;align-items:center;gap:10px;padding:12px;border-radius:10px;border:1px solid #f1f5f9;transition:.15s}
+.platform-card:hover{border-color:#c4b5fd}
+.platform-big-icon{font-size:26px}
+.platform-name{font-size:13px;font-weight:600;color:#334155}
+.platform-type{font-size:11px;color:#94a3b8}
+.platform-status{font-size:11px;padding:2px 8px;border-radius:20px;font-weight:500;white-space:nowrap}
+.status-on{background:#f0fdf4;color:#16a34a}
+.status-off{background:#fef2f2;color:#ef4444}
+.platform-btn{font-size:11px;padding:4px 10px;border-radius:8px;transition:.15s;font-weight:500}
+.btn-login{background:#7c3aed;color:#fff}
+.btn-login:hover{background:#6d28d9}
+.btn-logout{background:#f1f5f9;color:#64748b}
+.btn-logout:hover{background:#fee2e2;color:#ef4444}
+
+/* Empty state */
+.empty{text-align:center;padding:40px 20px;color:#94a3b8}
+.empty-icon{font-size:40px;margin-bottom:8px}
+.empty-text{font-size:13px}
+
+/* Publish records */
+.record-list{display:flex;flex-direction:column;gap:8px}
+.record-item{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f8fafc;border-radius:8px}
+.record-platform-icon{font-size:18px}
+.record-info{flex:1;min-width:0}
+.record-title{font-size:13px;font-weight:500;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.record-meta{font-size:11px;color:#94a3b8;margin-top:2px}
+.record-status{font-size:11px;padding:2px 8px;border-radius:20px;font-weight:500;white-space:nowrap}
+.rs-ok{background:#f0fdf4;color:#16a34a}
+.rs-fail{background:#fef2f2;color:#ef4444}
+.rs-run{background:#eff6ff;color:#2563eb}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:500;transition:.15s;cursor:pointer}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary{background:#7c3aed;color:#fff}
+.btn-primary:hover:not(:disabled){background:#6d28d9}
+.btn-secondary{background:#6366f1;color:#fff}
+.btn-secondary:hover:not(:disabled){background:#4f46e5}
+.btn-success{background:#059669;color:#fff}
+.btn-success:hover:not(:disabled){background:#047857}
+.btn-outline{background:#fff;color:#64748b;border:1px solid #e2e8f0}
+.btn-outline:hover:not(:disabled){border-color:#c4b5fd;color:#7c3aed}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn-full{width:100%}
+.btn-gradient{background:linear-gradient(135deg,#7c3aed,#6366f1);color:#fff;box-shadow:0 2px 8px rgba(124,58,237,.3)}
+.btn-gradient:hover:not(:disabled){background:linear-gradient(135deg,#6d28d9,#4f46e5)}
+
+/* Form */
+.form-group{margin-bottom:12px}
+.form-label{display:block;font-size:12px;font-weight:500;color:#64748b;margin-bottom:4px}
+.form-input{width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:13px;color:#334155;transition:.15s;background:#fff}
+.form-input:focus{border-color:#a78bfa;box-shadow:0 0 0 3px rgba(167,139,250,.15)}
+.form-select{width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:13px;color:#334155;background:#fff;cursor:pointer}
+.form-select:focus{border-color:#a78bfa}
+.form-textarea{width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:13px;color:#334155;resize:vertical;min-height:300px;line-height:1.6;font-family:monospace;background:#fff}
+.form-textarea:focus{border-color:#a78bfa;box-shadow:0 0 0 3px rgba(167,139,250,.15)}
+
+/* Creator layout */
+.creator-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.title-list{display:flex;flex-direction:column;gap:6px}
+.title-item{padding:10px 12px;border-radius:8px;border:1px solid #f1f5f9;cursor:pointer;font-size:13px;color:#475569;transition:.15s;line-height:1.4}
+.title-item:hover{border-color:#c4b5fd}
+.title-item.selected{border-color:#7c3aed;background:#ede9fe;color:#7c3aed;font-weight:500}
+.title-num{color:#94a3b8;margin-right:6px}
+.editor-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.editor-actions{display:flex;gap:6px}
+.editor-title{width:100%;border:0;border-bottom:1px solid #f1f5f9;padding-bottom:8px;margin-bottom:10px;font-size:16px;font-weight:700;color:#1e293b;background:transparent}
+.editor-title:focus{outline:none;border-bottom-color:#a78bfa}
+.editor-footer{text-align:right;font-size:11px;color:#94a3b8;margin-top:6px}
+.preview-box{border:1px solid #f1f5f9;border-radius:8px;padding:16px;min-height:300px;overflow-y:auto;font-size:13px;line-height:1.7;color:#334155}
+.preview-box h1{font-size:20px;font-weight:700;margin:12px 0 6px}
+.preview-box h2{font-size:16px;font-weight:600;margin:10px 0 5px;color:#1e293b}
+.preview-box h3{font-size:14px;font-weight:600;margin:8px 0 4px}
+.preview-box p{margin:6px 0}
+.preview-box ul,.preview-box ol{padding-left:20px;margin:6px 0}
+.preview-box li{margin:3px 0}
+.preview-box strong{font-weight:700}
+.preview-box hr{border:none;border-top:1px solid #e2e8f0;margin:12px 0}
+.preview-box blockquote{border-left:3px solid #7c3aed;padding-left:12px;color:#64748b;margin:8px 0}
+.preview-box em{font-style:italic;color:#64748b}
+
+/* Article list */
+.article-filters{display:flex;gap:8px;margin-bottom:12px}
+.article-list{display:flex;flex-direction:column}
+.article-item{display:flex;align-items:flex-start;gap:12px;padding:14px;border-bottom:1px solid #f8fafc;transition:.15s}
+.article-item:hover{background:#fafbff}
+.article-avatar{width:38px;height:38px;border-radius:10px;background:#ede9fe;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.article-info{flex:1;min-width:0}
+.article-title{font-size:13px;font-weight:600;color:#334155;margin-bottom:3px}
+.article-summary{font-size:12px;color:#94a3b8;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.article-meta{display:flex;align-items:center;gap:10px;font-size:11px;color:#94a3b8}
+.article-tag{color:#7c3aed}
+.article-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.badge{font-size:11px;padding:2px 8px;border-radius:20px;font-weight:500}
+.badge-draft{background:#fefce8;color:#ca8a04}
+.badge-published{background:#f0fdf4;color:#16a34a}
+
+/* Schedule */
+.schedule-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.checkbox-group{display:flex;flex-wrap:wrap;gap:10px}
+.checkbox-label{display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer}
+.schedule-item{display:flex;align-items:center;gap:10px;padding:12px;border-radius:10px;border:1px solid #f1f5f9}
+.schedule-info{flex:1}
+.schedule-title{font-size:13px;font-weight:500;color:#334155}
+.schedule-meta{font-size:11px;color:#94a3b8;margin-top:2px}
+.badge-active{background:#f0fdf4;color:#16a34a}
+.badge-paused{background:#f8fafc;color:#94a3b8}
+
+/* Settings */
+.ai-item{display:flex;align-items:center;gap:10px;padding:12px;border-radius:10px;border:1px solid #f1f5f9;margin-bottom:8px}
+.ai-avatar{width:34px;height:34px;border-radius:50%;background:#ede9fe;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#7c3aed;flex-shrink:0}
+.ai-info{flex:1}
+.ai-name{font-size:13px;font-weight:600;color:#334155}
+.ai-model{font-size:11px;color:#94a3b8}
+.badge-using{background:#f0fdf4;color:#16a34a}
+.badge-backup{background:#f8fafc;color:#94a3b8}
+.add-ai-form{margin-top:10px;padding:14px;background:#f8fafc;border-radius:10px}
+.source-card{display:flex;align-items:flex-start;gap:10px;padding:12px;background:#f8fafc;border-radius:10px;margin-bottom:8px}
+.source-icon{font-size:20px;margin-top:2px}
+.source-link{color:#7c3aed;font-weight:600;font-size:13px}
+.source-desc{font-size:11px;color:#94a3b8;margin-top:2px}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px}
+.modal{background:#fff;border-radius:16px;padding:24px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.modal-title{font-size:16px;font-weight:700;color:#1e293b;margin-bottom:6px}
+.modal-desc{font-size:13px;color:#64748b;margin-bottom:14px}
+.modal-platform-list{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.modal-platform-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;border:1px solid #f1f5f9;cursor:pointer;transition:.15s}
+.modal-platform-item.checked{border-color:#a78bfa;background:#faf5ff}
+.modal-platform-item-icon{font-size:20px}
+.modal-platform-name{flex:1;font-size:13px;font-weight:500;color:#334155}
+.modal-platform-warn{font-size:11px;color:#ef4444}
+.modal-actions{display:flex;gap:10px}
+.info-box{border-radius:10px;padding:12px;margin-bottom:12px}
+.info-box-blue{background:#eff6ff;border:1px solid #bfdbfe}
+.info-box-blue p{font-size:12px;color:#1d4ed8;line-height:1.6}
+.info-box-yellow{background:#fefce8;border:1px solid #fde68a}
+.info-box-yellow p{font-size:11px;color:#92400e}
+
+/* Toast */
+.toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:10px;color:#fff;font-size:13px;font-weight:500;z-index:300;box-shadow:0 4px 16px rgba(0,0,0,.15);animation:slideIn .2s ease}
+@keyframes slideIn{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.toast-success{background:#059669}
+.toast-error{background:#dc2626}
+.toast-info{background:#2563eb}
+
+/* Loading */
+.loading-overlay{position:absolute;inset:0;background:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;border-radius:12px;z-index:10}
+.loading-content{text-align:center}
+.loading-icon{font-size:32px;animation:pulse 1.5s ease infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.loading-text{font-size:13px;color:#7c3aed;font-weight:500;margin-top:6px}
+
+/* Outline preview */
+.outline-box{font-size:12px;color:#475569;line-height:1.8;padding:12px;background:#f8fafc;border-radius:8px}
+.outline-box strong{color:#334155;font-weight:600}
+
+/* Responsive */
+@media(max-width:900px){
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .platform-grid{grid-template-columns:repeat(2,1fr)}
+  .creator-grid{grid-template-columns:1fr}
+  .schedule-grid{grid-template-columns:1fr}
+}
+@media(max-width:640px){
+  .sidebar{display:none}
+  .layout{padding:12px}
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .platform-grid{grid-template-columns:1fr}
+}
+</style>
 </head>
-<body class="bg-gray-50 min-h-screen" v-cloak>
+<body>
 <div id="app">
   <!-- 顶部导航 -->
-  <nav class="gradient-bg text-white shadow-lg sticky top-0 z-50">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between h-16">
-        <div class="flex items-center gap-3">
-          <span class="text-2xl">🚀</span>
-          <div>
-            <h1 class="text-lg font-bold leading-tight">自媒体运营自动化平台</h1>
-            <p class="text-xs text-purple-200">AI 驱动 · 多平台 · 高效运营</p>
-          </div>
-        </div>
-        <div class="flex items-center gap-4 text-sm">
-          <span class="bg-white/20 px-3 py-1 rounded-full text-xs">{{ stats.articles.total }} 篇文章</span>
-          <span class="bg-white/20 px-3 py-1 rounded-full text-xs">{{ stats.articles.published }} 次发布</span>
-          <a href="https://github.com/Neb1ter/media-auto" target="_blank" class="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full text-xs transition-colors">⭐ GitHub</a>
-        </div>
+  <nav class="nav">
+    <div class="nav-brand">
+      <span class="nav-brand-icon">🚀</span>
+      <div>
+        <div class="nav-brand-title">自媒体运营自动化平台</div>
+        <div class="nav-brand-sub">AI 驱动 · 多平台 · 高效运营</div>
       </div>
+    </div>
+    <div class="nav-badges">
+      <span class="nav-badge">{{ stats.total }} 篇文章</span>
+      <span class="nav-badge">{{ stats.published }} 次发布</span>
+      <a href="https://github.com/Neb1ter/media-auto" target="_blank" class="nav-link">⭐ GitHub</a>
     </div>
   </nav>
 
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-    <div class="flex gap-6">
-      <!-- 左侧菜单 -->
-      <aside class="w-52 flex-shrink-0">
-        <nav class="bg-white rounded-xl shadow-sm p-3 sticky top-24">
-          <div v-for="item in navItems" :key="item.id"
-            @click="activeTab = item.id"
-            :class="['flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all text-sm mb-1', activeTab === item.id ? 'bg-purple-50 text-purple-700 font-semibold' : 'text-gray-600 hover:bg-gray-50']">
-            <span class="text-lg">{{ item.icon }}</span>
-            <span>{{ item.label }}</span>
+  <div class="layout">
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+      <div class="sidebar-nav">
+        <div v-for="item in navItems" :key="item.id"
+          :class="['nav-item', activeTab === item.id ? 'active' : '']"
+          @click="activeTab = item.id">
+          <span class="nav-item-icon">{{ item.icon }}</span>
+          <span>{{ item.label }}</span>
+        </div>
+        <div class="sidebar-platforms">
+          <div class="sidebar-label">支持平台</div>
+          <div v-for="p in platforms" :key="p.id" class="platform-item">
+            <span class="platform-item-icon">{{ p.icon }}</span>
+            <span>{{ p.name }}</span>
+            <span :class="['dot', p.loggedIn ? 'dot-on' : 'dot-off']"></span>
           </div>
-          <div class="mt-4 pt-3 border-t border-gray-100">
-            <p class="text-xs text-gray-400 px-3 mb-2">支持平台</p>
-            <div v-for="p in platforms" :key="p.platform" class="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-500">
-              <span>{{ p.icon }}</span>
-              <span>{{ p.name }}</span>
-              <span :class="['status-dot ml-auto', p.logged_in ? 'status-online' : 'status-offline']"></span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 主内容 -->
+    <main class="main">
+
+      <!-- 运营看板 -->
+      <div v-if="activeTab === 'dashboard'">
+        <div class="page-title">📊 运营看板</div>
+        <div class="stats-grid">
+          <div class="stat-card" v-for="s in statCards" :key="s.label">
+            <div class="stat-top">
+              <span class="stat-icon">{{ s.icon }}</span>
+              <span :class="['stat-trend', s.trend > 0 ? 'trend-up' : 'trend-none']">
+                {{ s.trend > 0 ? '+' + s.trend + '%' : '—' }}
+              </span>
             </div>
+            <div class="stat-value">{{ s.value }}</div>
+            <div class="stat-label">{{ s.label }}</div>
           </div>
-        </nav>
-      </aside>
+        </div>
 
-      <!-- 主内容区 -->
-      <main class="flex-1 min-w-0">
-
-        <!-- ===== 运营看板 ===== -->
-        <div v-if="activeTab === 'dashboard'">
-          <h2 class="text-xl font-bold text-gray-800 mb-4">📊 运营看板</h2>
-          <!-- 统计卡片 -->
-          <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div v-for="card in statCards" :key="card.label" class="bg-white rounded-xl shadow-sm p-4 card-hover">
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-2xl">{{ card.icon }}</span>
-                <span :class="['text-xs px-2 py-0.5 rounded-full', card.trend > 0 ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-500']">
-                  {{ card.trend > 0 ? '+' + card.trend + '%' : '—' }}
-                </span>
+        <div class="card">
+          <div class="card-title">🌐 平台账号状态</div>
+          <div class="platform-grid">
+            <div class="platform-card" v-for="p in platforms" :key="p.id">
+              <span class="platform-big-icon">{{ p.icon }}</span>
+              <div style="flex:1;min-width:0">
+                <div class="platform-name">{{ p.name }}</div>
+                <div class="platform-type">{{ p.type }}</div>
               </div>
-              <div class="text-2xl font-bold text-gray-800">{{ card.value }}</div>
-              <div class="text-xs text-gray-500 mt-1">{{ card.label }}</div>
-            </div>
-          </div>
-
-          <!-- 平台账号状态 -->
-          <div class="bg-white rounded-xl shadow-sm p-5 mb-6">
-            <h3 class="font-semibold text-gray-700 mb-4">🌐 平台账号状态</h3>
-            <div class="grid grid-cols-2 lg:grid-cols-3 gap-3">
-              <div v-for="p in platforms" :key="p.platform" class="flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:border-purple-200 transition-colors">
-                <span class="text-2xl">{{ p.icon }}</span>
-                <div class="flex-1 min-w-0">
-                  <div class="font-medium text-sm text-gray-700">{{ p.name }}</div>
-                  <div class="text-xs text-gray-400">{{ p.type }}</div>
-                </div>
-                <span :class="['text-xs px-2 py-0.5 rounded-full font-medium', p.logged_in ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500']">
-                  {{ p.logged_in ? '已登录' : '未登录' }}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <!-- 最近发布记录 -->
-          <div class="bg-white rounded-xl shadow-sm p-5">
-            <h3 class="font-semibold text-gray-700 mb-4">📋 最近发布记录</h3>
-            <div v-if="recentPublish.length === 0" class="text-center py-8 text-gray-400">
-              <div class="text-4xl mb-2">📭</div>
-              <p class="text-sm">暂无发布记录，去创作并发布您的第一篇文章吧！</p>
-              <button @click="activeTab='creator'" class="mt-3 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 transition-colors">开始创作</button>
-            </div>
-            <div v-else class="space-y-3">
-              <div v-for="r in recentPublish" :key="r.id" class="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
-                <span class="text-xl">{{ getPlatformIcon(r.platform) }}</span>
-                <div class="flex-1 min-w-0">
-                  <div class="text-sm font-medium text-gray-700 truncate">{{ r.title }}</div>
-                  <div class="text-xs text-gray-400">{{ r.platform }} · {{ r.time }}</div>
-                </div>
-                <span :class="['text-xs px-2 py-0.5 rounded-full', r.status === 'success' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500']">
-                  {{ r.status === 'success' ? '✓ 成功' : '✗ 失败' }}
-                </span>
-              </div>
+              <span :class="['platform-status', p.loggedIn ? 'status-on' : 'status-off']">
+                {{ p.loggedIn ? '已登录' : '未登录' }}
+              </span>
             </div>
           </div>
         </div>
 
-        <!-- ===== AI 创作 ===== -->
-        <div v-if="activeTab === 'creator'">
-          <h2 class="text-xl font-bold text-gray-800 mb-4">✍️ AI 智能创作</h2>
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <!-- 左侧：创作控制台 -->
-            <div class="space-y-4">
-              <div class="bg-white rounded-xl shadow-sm p-5">
-                <h3 class="font-semibold text-gray-700 mb-3">📌 创作设置</h3>
-                <div class="space-y-3">
-                  <div>
-                    <label class="text-xs font-medium text-gray-500 mb-1 block">文章主题 *</label>
-                    <input v-model="creator.topic" type="text" placeholder="例如：2025年AI工具推荐、副业赚钱攻略..." class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-200" />
-                  </div>
-                  <div>
-                    <label class="text-xs font-medium text-gray-500 mb-1 block">目标平台</label>
-                    <select v-model="creator.platform" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-400">
-                      <option value="general">通用风格</option>
-                      <option value="zhihu">知乎（深度分析）</option>
-                      <option value="wechat">微信公众号（亲切实用）</option>
-                      <option value="baijia">百家号（新闻资讯）</option>
-                      <option value="toutiao">今日头条（吸睛标题）</option>
-                      <option value="xiaohongshu">小红书（种草笔记）</option>
-                      <option value="weibo">微博（简短热点）</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label class="text-xs font-medium text-gray-500 mb-1 block">关键词（逗号分隔）</label>
-                    <input v-model="creator.keywords" type="text" placeholder="例如：AI, 效率, 工具" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-200" />
-                  </div>
-                </div>
-                <div class="flex gap-2 mt-4">
-                  <button @click="generateTitles" :disabled="creator.loading || !creator.topic" class="flex-1 bg-purple-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                    {{ creator.loading ? '⏳ 生成中...' : '💡 生成标题' }}
-                  </button>
-                  <button @click="generateOutline" :disabled="creator.loading || !creator.selectedTitle" class="flex-1 bg-indigo-500 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                    📋 生成大纲
-                  </button>
-                </div>
-                <button @click="generateArticle" :disabled="creator.loading || !creator.selectedTitle" class="w-full mt-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg py-2.5 text-sm font-semibold hover:from-purple-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md">
-                  🚀 一键生成完整文章
+        <div class="card">
+          <div class="card-title">📋 最近发布记录</div>
+          <div v-if="publishTasks.length === 0" class="empty">
+            <div class="empty-icon">📭</div>
+            <div class="empty-text">暂无发布记录，去创作并发布您的第一篇文章吧！</div>
+            <button class="btn btn-primary" style="margin:12px auto 0;display:flex" @click="activeTab='creator'">开始创作</button>
+          </div>
+          <div v-else class="record-list">
+            <div v-for="r in publishTasks.slice(0,5)" :key="r.id" class="record-item">
+              <span class="record-platform-icon">{{ getPlatformIcon(r.platform) }}</span>
+              <div class="record-info">
+                <div class="record-title">{{ r.title }}</div>
+                <div class="record-meta">{{ r.platform }} · {{ r.time }}</div>
+              </div>
+              <span :class="['record-status', r.status === 'success' ? 'rs-ok' : 'rs-fail']">
+                {{ r.status === 'success' ? '✓ 成功' : '✗ 失败' }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI 创作 -->
+      <div v-if="activeTab === 'creator'">
+        <div class="page-title">✍️ AI 智能创作</div>
+        <div class="creator-grid">
+          <!-- 左侧控制台 -->
+          <div>
+            <div class="card">
+              <div class="card-title">📌 创作设置</div>
+              <div class="form-group">
+                <label class="form-label">文章主题 *</label>
+                <input v-model="creator.topic" class="form-input" placeholder="例如：2025年AI工具推荐、副业赚钱攻略..." />
+              </div>
+              <div class="form-group">
+                <label class="form-label">目标平台风格</label>
+                <select v-model="creator.platform" class="form-select">
+                  <option value="general">通用风格</option>
+                  <option value="zhihu">知乎（深度分析）</option>
+                  <option value="wechat">微信公众号（亲切实用）</option>
+                  <option value="baijia">百家号（新闻资讯）</option>
+                  <option value="toutiao">今日头条（吸睛标题）</option>
+                  <option value="xiaohongshu">小红书（种草笔记）</option>
+                  <option value="weibo">微博（简短热点）</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">关键词（逗号分隔）</label>
+                <input v-model="creator.keywords" class="form-input" placeholder="例如：AI, 效率, 工具" />
+              </div>
+              <div style="display:flex;gap:8px;margin-bottom:8px">
+                <button class="btn btn-primary" style="flex:1" :disabled="creator.loading || !creator.topic" @click="generateTitles">
+                  {{ creator.loading ? '⏳ 生成中...' : '💡 生成标题' }}
+                </button>
+                <button class="btn btn-secondary" style="flex:1" :disabled="creator.loading || !creator.selectedTitle" @click="generateOutline">
+                  📋 生成大纲
                 </button>
               </div>
+              <button class="btn btn-gradient btn-full" :disabled="creator.loading || !creator.topic" @click="generateArticle">
+                🚀 一键生成完整文章
+              </button>
+            </div>
 
-              <!-- 标题候选 -->
-              <div v-if="creator.titles.length > 0" class="bg-white rounded-xl shadow-sm p-5">
-                <h3 class="font-semibold text-gray-700 mb-3">💡 标题候选（点击选择）</h3>
-                <div class="space-y-2">
-                  <div v-for="(title, i) in creator.titles" :key="i"
-                    @click="creator.selectedTitle = title"
-                    :class="['p-3 rounded-lg border cursor-pointer text-sm transition-all', creator.selectedTitle === title ? 'border-purple-400 bg-purple-50 text-purple-700 font-medium' : 'border-gray-100 hover:border-purple-200 text-gray-700']">
-                    <span class="text-gray-400 mr-2">{{ i+1 }}.</span>{{ title }}
-                  </div>
+            <div class="card" v-if="creator.titles.length > 0">
+              <div class="card-title">💡 标题候选（点击选择）</div>
+              <div class="title-list">
+                <div v-for="(t,i) in creator.titles" :key="i"
+                  :class="['title-item', creator.selectedTitle === t ? 'selected' : '']"
+                  @click="creator.selectedTitle = t">
+                  <span class="title-num">{{ i+1 }}.</span>{{ t }}
                 </div>
-              </div>
-
-              <!-- 大纲 -->
-              <div v-if="creator.outline" class="bg-white rounded-xl shadow-sm p-5">
-                <h3 class="font-semibold text-gray-700 mb-3">📋 文章大纲</h3>
-                <div class="prose text-sm text-gray-600" v-html="renderMd(creator.outline)"></div>
               </div>
             </div>
 
-            <!-- 右侧：文章编辑器 -->
-            <div class="bg-white rounded-xl shadow-sm p-5 flex flex-col" style="min-height: 500px;">
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="font-semibold text-gray-700">📝 文章编辑器</h3>
-                <div class="flex gap-2">
-                  <button @click="creator.previewMode = !creator.previewMode" class="text-xs px-2 py-1 border border-gray-200 rounded text-gray-500 hover:border-purple-300 hover:text-purple-600 transition-colors">
-                    {{ creator.previewMode ? '✏️ 编辑' : '👁️ 预览' }}
-                  </button>
-                  <button @click="saveArticle" :disabled="!creator.content" class="text-xs px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50 transition-colors">
-                    💾 保存草稿
-                  </button>
-                  <button @click="showPublishModal = true" :disabled="!creator.content" class="text-xs px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 transition-colors">
-                    🚀 发布
-                  </button>
-                </div>
+            <div class="card" v-if="creator.outline">
+              <div class="card-title">📋 文章大纲</div>
+              <div class="outline-box" v-html="simpleMarkdown(creator.outline)"></div>
+            </div>
+          </div>
+
+          <!-- 右侧编辑器 -->
+          <div class="card" style="position:relative;display:flex;flex-direction:column">
+            <div class="editor-header">
+              <div class="card-title" style="margin-bottom:0">📝 文章编辑器</div>
+              <div class="editor-actions">
+                <button class="btn btn-outline btn-sm" @click="creator.previewMode = !creator.previewMode">
+                  {{ creator.previewMode ? '✏️ 编辑' : '👁️ 预览' }}
+                </button>
+                <button class="btn btn-success btn-sm" :disabled="!creator.content" @click="saveArticle">💾 保存</button>
+                <button class="btn btn-primary btn-sm" :disabled="!creator.content" @click="showPublishModal = true">🚀 发布</button>
               </div>
-              <div v-if="creator.selectedTitle" class="mb-2">
-                <input v-model="creator.selectedTitle" class="w-full text-lg font-bold border-0 border-b border-gray-100 pb-2 focus:outline-none focus:border-purple-300 text-gray-800" placeholder="文章标题..." />
-              </div>
-              <div class="flex-1">
-                <div v-if="!creator.previewMode">
-                  <textarea v-model="creator.content" placeholder="在此输入或粘贴文章内容，支持 Markdown 格式..." class="w-full h-96 border border-gray-100 rounded-lg p-3 text-sm text-gray-700 focus:outline-none focus:border-purple-300 focus:ring-1 focus:ring-purple-100 font-mono leading-relaxed"></textarea>
-                </div>
-                <div v-else class="prose text-sm text-gray-700 border border-gray-100 rounded-lg p-4 h-96 overflow-y-auto" v-html="renderMd(creator.content || '暂无内容，请先生成或输入文章...')"></div>
-              </div>
-              <div v-if="creator.content" class="mt-2 text-xs text-gray-400 text-right">
-                字数：{{ creator.content.length }} 字
-              </div>
-              <div v-if="creator.loading" class="absolute inset-0 bg-white/80 flex items-center justify-center rounded-xl">
-                <div class="text-center">
-                  <div class="text-3xl animate-pulse-slow mb-2">🤖</div>
-                  <p class="text-sm text-purple-600 font-medium loading-dots">AI 正在创作</p>
-                </div>
+            </div>
+            <input v-if="creator.selectedTitle" v-model="creator.selectedTitle" class="editor-title" placeholder="文章标题..." />
+            <div v-if="!creator.previewMode">
+              <textarea v-model="creator.content" class="form-textarea" style="min-height:360px" placeholder="在此输入或粘贴文章内容，支持 Markdown 格式..."></textarea>
+            </div>
+            <div v-else class="preview-box" style="min-height:360px" v-html="simpleMarkdown(creator.content || '暂无内容，请先生成或输入文章...')"></div>
+            <div class="editor-footer" v-if="creator.content">字数：{{ creator.content.length }} 字</div>
+            <div class="loading-overlay" v-if="creator.loading">
+              <div class="loading-content">
+                <div class="loading-icon">🤖</div>
+                <div class="loading-text">AI 正在创作中...</div>
               </div>
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- ===== 文章库 ===== -->
-        <div v-if="activeTab === 'articles'">
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-bold text-gray-800">📚 文章库</h2>
-            <button @click="activeTab='creator'" class="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 transition-colors">+ 新建文章</button>
+      <!-- 文章库 -->
+      <div v-if="activeTab === 'articles'">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div class="page-title" style="margin-bottom:0">📚 文章库</div>
+          <button class="btn btn-primary btn-sm" @click="activeTab='creator'">+ 新建文章</button>
+        </div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="padding:14px;border-bottom:1px solid #f1f5f9;display:flex;gap:8px">
+            <input v-model="articleSearch" class="form-input" style="flex:1" placeholder="搜索文章标题..." />
+            <select v-model="articleFilter" class="form-select" style="width:120px">
+              <option value="all">全部状态</option>
+              <option value="draft">草稿</option>
+              <option value="published">已发布</option>
+            </select>
           </div>
-          <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-            <div class="p-4 border-b border-gray-100 flex gap-3">
-              <input v-model="articleSearch" type="text" placeholder="搜索文章标题..." class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-400" />
-              <select v-model="articleFilter" class="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-400">
-                <option value="all">全部状态</option>
-                <option value="draft">草稿</option>
-                <option value="published">已发布</option>
+          <div v-if="filteredArticles.length === 0" class="empty" style="padding:40px">
+            <div class="empty-icon">📭</div>
+            <div class="empty-text">暂无文章，去 AI 创作页面生成您的第一篇文章吧！</div>
+          </div>
+          <div class="article-list" v-else>
+            <div class="article-item" v-for="a in filteredArticles" :key="a.id">
+              <div class="article-avatar">{{ a.aiGenerated ? '🤖' : '✍️' }}</div>
+              <div class="article-info">
+                <div class="article-title">{{ a.title }}</div>
+                <div class="article-summary">{{ a.summary }}</div>
+                <div class="article-meta">
+                  <span>{{ a.wordCount }} 字</span>
+                  <span>{{ a.createdAt }}</span>
+                  <span class="article-tag" v-if="a.tags">🏷️ {{ a.tags }}</span>
+                </div>
+              </div>
+              <div class="article-actions">
+                <span :class="['badge', a.status === 'published' ? 'badge-published' : 'badge-draft']">
+                  {{ a.status === 'published' ? '已发布' : '草稿' }}
+                </span>
+                <button class="btn btn-outline btn-sm" @click="editArticle(a)">编辑</button>
+                <button class="btn btn-primary btn-sm" @click="publishArticleFrom(a)">发布</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 发布管理 -->
+      <div v-if="activeTab === 'publish'">
+        <div class="page-title">🌐 发布管理</div>
+        <div class="card">
+          <div class="card-title">平台账号管理</div>
+          <div class="platform-grid">
+            <div class="platform-card" v-for="p in platforms" :key="p.id">
+              <span class="platform-big-icon">{{ p.icon }}</span>
+              <div style="flex:1;min-width:0">
+                <div class="platform-name">{{ p.name }}</div>
+                <div class="platform-type" style="font-size:11px;color:#94a3b8">{{ p.desc }}</div>
+              </div>
+              <div style="text-align:right">
+                <div :class="['platform-status', p.loggedIn ? 'status-on' : 'status-off']" style="margin-bottom:4px">
+                  {{ p.loggedIn ? '✓ 已登录' : '✗ 未登录' }}
+                </div>
+                <button :class="['platform-btn', p.loggedIn ? 'btn-logout' : 'btn-login']" @click="loginPlatform(p)">
+                  {{ p.loggedIn ? '退出' : '去登录' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">发布任务记录</div>
+          <div v-if="publishTasks.length === 0" class="empty">
+            <div class="empty-icon">📋</div>
+            <div class="empty-text">暂无发布任务记录</div>
+          </div>
+          <div class="record-list" v-else>
+            <div v-for="t in publishTasks" :key="t.id" class="record-item">
+              <span class="record-platform-icon">{{ getPlatformIcon(t.platform) }}</span>
+              <div class="record-info">
+                <div class="record-title">{{ t.title }}</div>
+                <div class="record-meta">{{ t.platform }} · {{ t.time }}</div>
+              </div>
+              <span :class="['record-status', t.status === 'success' ? 'rs-ok' : t.status === 'running' ? 'rs-run' : 'rs-fail']">
+                {{ t.status === 'success' ? '✓ 成功' : t.status === 'running' ? '⏳ 发布中' : '✗ 失败' }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 定时发布 -->
+      <div v-if="activeTab === 'schedule'">
+        <div class="page-title">⏰ 定时发布</div>
+        <div class="card">
+          <div class="card-title">新建定时任务</div>
+          <div class="schedule-grid">
+            <div class="form-group">
+              <label class="form-label">选择文章</label>
+              <select v-model="schedule.articleId" class="form-select">
+                <option value="">-- 请选择文章 --</option>
+                <option v-for="a in articles" :key="a.id" :value="a.id">{{ a.title }}</option>
               </select>
             </div>
-            <div v-if="filteredArticles.length === 0" class="text-center py-12 text-gray-400">
-              <div class="text-4xl mb-2">📭</div>
-              <p class="text-sm">暂无文章，去 AI 创作页面生成您的第一篇文章吧！</p>
+            <div class="form-group">
+              <label class="form-label">发布时间</label>
+              <input v-model="schedule.time" type="datetime-local" class="form-input" />
             </div>
-            <div v-else>
-              <div v-for="a in filteredArticles" :key="a.id" class="flex items-start gap-4 p-4 border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                <div class="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600 font-bold text-sm flex-shrink-0">
-                  {{ a.ai_generated ? '🤖' : '✍️' }}
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="font-medium text-gray-800 text-sm mb-1">{{ a.title }}</div>
-                  <div class="text-xs text-gray-400 mb-2">{{ a.summary }}</div>
-                  <div class="flex items-center gap-3 text-xs text-gray-400">
-                    <span>{{ a.word_count }} 字</span>
-                    <span>{{ a.created_at }}</span>
-                    <span v-if="a.tags" class="text-purple-500">🏷️ {{ a.tags }}</span>
-                  </div>
-                </div>
-                <div class="flex items-center gap-2 flex-shrink-0">
-                  <span :class="['text-xs px-2 py-0.5 rounded-full', a.status === 'published' ? 'bg-green-50 text-green-600' : 'bg-yellow-50 text-yellow-600']">
-                    {{ a.status === 'published' ? '已发布' : '草稿' }}
-                  </span>
-                  <button @click="editArticle(a)" class="text-xs px-2 py-1 border border-gray-200 rounded hover:border-purple-300 hover:text-purple-600 transition-colors">编辑</button>
-                  <button @click="publishArticle(a)" class="text-xs px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors">发布</button>
-                </div>
+            <div class="form-group">
+              <label class="form-label">目标平台（可多选）</label>
+              <div class="checkbox-group">
+                <label v-for="p in platforms" :key="p.id" class="checkbox-label">
+                  <input type="checkbox" v-model="schedule.platforms" :value="p.id" />
+                  {{ p.icon }} {{ p.name }}
+                </label>
               </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">重复频率</label>
+              <select v-model="schedule.repeat" class="form-select">
+                <option value="once">仅一次</option>
+                <option value="daily">每天</option>
+                <option value="weekly">每周</option>
+                <option value="monthly">每月</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-primary" :disabled="!schedule.articleId || schedule.platforms.length === 0 || !schedule.time" @click="addSchedule">
+            ➕ 添加定时任务
+          </button>
+        </div>
+        <div class="card">
+          <div class="card-title">任务列表</div>
+          <div v-if="scheduledTasks.length === 0" class="empty">
+            <div class="empty-icon">⏰</div>
+            <div class="empty-text">暂无定时任务，添加一个让内容自动发布吧！</div>
+          </div>
+          <div v-else style="display:flex;flex-direction:column;gap:8px">
+            <div v-for="t in scheduledTasks" :key="t.id" class="schedule-item">
+              <div class="schedule-info">
+                <div class="schedule-title">{{ t.title }}</div>
+                <div class="schedule-meta">{{ t.platforms.map(p=>getPlatformIcon(p)).join(' ') }} · {{ t.time }} · {{ t.repeat === 'once' ? '仅一次' : t.repeat }}</div>
+              </div>
+              <span :class="['badge', t.active ? 'badge-active' : 'badge-paused']">{{ t.active ? '✓ 启用' : '已暂停' }}</span>
+              <button class="btn btn-outline btn-sm" style="color:#ef4444;border-color:#fecaca" @click="removeSchedule(t.id)">删除</button>
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- ===== 发布管理 ===== -->
-        <div v-if="activeTab === 'publish'">
-          <h2 class="text-xl font-bold text-gray-800 mb-4">🌐 发布管理</h2>
-          <!-- 平台登录状态 -->
-          <div class="bg-white rounded-xl shadow-sm p-5 mb-5">
-            <h3 class="font-semibold text-gray-700 mb-4">平台账号管理</h3>
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              <div v-for="p in platforms" :key="p.platform" class="flex items-center gap-3 p-4 rounded-xl border border-gray-100 hover:border-purple-200 transition-all card-hover">
-                <span class="text-3xl">{{ p.icon }}</span>
-                <div class="flex-1">
-                  <div class="font-semibold text-gray-700">{{ p.name }}</div>
-                  <div class="text-xs text-gray-400 mt-0.5">{{ p.description }}</div>
-                </div>
-                <div class="text-right">
-                  <div :class="['text-xs font-medium mb-1', p.logged_in ? 'text-green-600' : 'text-red-500']">
-                    {{ p.logged_in ? '✓ 已登录' : '✗ 未登录' }}
-                  </div>
-                  <button @click="loginPlatform(p)" :class="['text-xs px-3 py-1.5 rounded-lg transition-colors', p.logged_in ? 'bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-500' : 'bg-purple-600 text-white hover:bg-purple-700']">
-                    {{ p.logged_in ? '退出登录' : '去登录' }}
-                  </button>
-                </div>
-              </div>
+      <!-- 设置 -->
+      <div v-if="activeTab === 'settings'">
+        <div class="page-title">⚙️ 系统设置</div>
+        <div class="card">
+          <div class="card-title">AI 模型配置</div>
+          <div v-for="(c,i) in aiConfigs" :key="i" class="ai-item">
+            <div class="ai-avatar">AI</div>
+            <div class="ai-info">
+              <div class="ai-name">{{ c.name }}</div>
+              <div class="ai-model">{{ c.model }} · {{ c.baseUrl }}</div>
             </div>
+            <span :class="['badge', c.active ? 'badge-using' : 'badge-backup']">{{ c.active ? '使用中' : '备用' }}</span>
           </div>
-
-          <!-- 发布任务记录 -->
-          <div class="bg-white rounded-xl shadow-sm p-5">
-            <h3 class="font-semibold text-gray-700 mb-4">发布任务记录</h3>
-            <div v-if="publishTasks.length === 0" class="text-center py-8 text-gray-400">
-              <div class="text-4xl mb-2">📋</div>
-              <p class="text-sm">暂无发布任务记录</p>
-            </div>
-            <div v-else class="space-y-3">
-              <div v-for="t in publishTasks" :key="t.id" class="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
-                <span class="text-xl">{{ getPlatformIcon(t.platform) }}</span>
-                <div class="flex-1 min-w-0">
-                  <div class="text-sm font-medium text-gray-700 truncate">{{ t.title }}</div>
-                  <div class="text-xs text-gray-400">{{ t.platform }} · {{ t.time }}</div>
-                </div>
-                <span :class="['text-xs px-2 py-0.5 rounded-full font-medium', t.status === 'success' ? 'bg-green-50 text-green-600' : t.status === 'running' ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-500']">
-                  {{ t.status === 'success' ? '✓ 成功' : t.status === 'running' ? '⏳ 发布中' : '✗ 失败' }}
-                </span>
-              </div>
-            </div>
+          <button class="btn btn-outline btn-sm" @click="showAddAI = !showAddAI" style="margin-top:8px">+ 添加 AI 配置</button>
+          <div class="add-ai-form" v-if="showAddAI">
+            <div class="form-group"><input v-model="newAI.name" class="form-input" placeholder="配置名称（如：我的GPT）" /></div>
+            <div class="form-group"><input v-model="newAI.apiKey" class="form-input" type="password" placeholder="API Key" /></div>
+            <div class="form-group"><input v-model="newAI.baseUrl" class="form-input" placeholder="API Base URL（如：https://api.openai.com/v1）" /></div>
+            <div class="form-group"><input v-model="newAI.model" class="form-input" placeholder="模型名称（如：gpt-4o）" /></div>
+            <button class="btn btn-primary btn-sm" @click="addAIConfig">保存配置</button>
           </div>
         </div>
-
-        <!-- ===== 定时任务 ===== -->
-        <div v-if="activeTab === 'schedule'">
-          <h2 class="text-xl font-bold text-gray-800 mb-4">⏰ 定时发布</h2>
-          <div class="bg-white rounded-xl shadow-sm p-5 mb-5">
-            <h3 class="font-semibold text-gray-700 mb-4">新建定时任务</h3>
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div>
-                <label class="text-xs font-medium text-gray-500 mb-1 block">选择文章</label>
-                <select v-model="schedule.articleId" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-400">
-                  <option value="">-- 请选择文章 --</option>
-                  <option v-for="a in articles" :key="a.id" :value="a.id">{{ a.title }}</option>
-                </select>
-              </div>
-              <div>
-                <label class="text-xs font-medium text-gray-500 mb-1 block">目标平台</label>
-                <div class="flex flex-wrap gap-2">
-                  <label v-for="p in platforms" :key="p.platform" class="flex items-center gap-1.5 cursor-pointer">
-                    <input type="checkbox" v-model="schedule.platforms" :value="p.platform" class="rounded" />
-                    <span class="text-sm">{{ p.icon }} {{ p.name }}</span>
-                  </label>
-                </div>
-              </div>
-              <div>
-                <label class="text-xs font-medium text-gray-500 mb-1 block">发布时间</label>
-                <input v-model="schedule.time" type="datetime-local" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-400" />
-              </div>
-              <div>
-                <label class="text-xs font-medium text-gray-500 mb-1 block">重复频率</label>
-                <select v-model="schedule.repeat" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-400">
-                  <option value="once">仅一次</option>
-                  <option value="daily">每天</option>
-                  <option value="weekly">每周</option>
-                  <option value="monthly">每月</option>
-                </select>
-              </div>
-            </div>
-            <button @click="addSchedule" :disabled="!schedule.articleId || schedule.platforms.length === 0 || !schedule.time" class="mt-4 px-5 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors">
-              ➕ 添加定时任务
-            </button>
-          </div>
-          <div class="bg-white rounded-xl shadow-sm p-5">
-            <h3 class="font-semibold text-gray-700 mb-4">任务列表</h3>
-            <div v-if="scheduledTasks.length === 0" class="text-center py-8 text-gray-400">
-              <div class="text-4xl mb-2">⏰</div>
-              <p class="text-sm">暂无定时任务，添加一个让内容自动发布吧！</p>
-            </div>
-            <div v-else class="space-y-3">
-              <div v-for="t in scheduledTasks" :key="t.id" class="flex items-center gap-3 p-3 rounded-lg border border-gray-100">
-                <div class="flex-1">
-                  <div class="text-sm font-medium text-gray-700">{{ t.title }}</div>
-                  <div class="text-xs text-gray-400 mt-0.5">
-                    {{ t.platforms.map(p => getPlatformIcon(p)).join(' ') }} · {{ t.time }} · {{ t.repeat === 'once' ? '仅一次' : t.repeat }}
-                  </div>
-                </div>
-                <span :class="['text-xs px-2 py-0.5 rounded-full', t.active ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-500']">
-                  {{ t.active ? '✓ 启用' : '已暂停' }}
-                </span>
-                <button @click="removeSchedule(t.id)" class="text-xs text-red-400 hover:text-red-600 transition-colors">删除</button>
-              </div>
+        <div class="card">
+          <div class="card-title">关于本项目</div>
+          <p style="font-size:13px;color:#64748b;margin-bottom:10px">本平台基于以下优秀开源项目构建：</p>
+          <div class="source-card">
+            <span class="source-icon">⭐</span>
+            <div>
+              <a href="https://github.com/dreammis/social-auto-upload" target="_blank" class="source-link">dreammis/social-auto-upload</a>
+              <div class="source-desc">多平台视频/图文自动发布核心引擎（8,600+ Stars）</div>
             </div>
           </div>
+          <div class="source-card">
+            <span class="source-icon">⭐</span>
+            <div>
+              <a href="https://github.com/ZuckerChen/ss-media-tools" target="_blank" class="source-link">ZuckerChen/ss-media-tools</a>
+              <div class="source-desc">AI 内容创作与多平台发布工具</div>
+            </div>
+          </div>
+          <p style="font-size:13px;margin-top:10px">
+            <a href="https://github.com/Neb1ter/media-auto" target="_blank" style="color:#7c3aed;font-weight:500">📦 查看本项目源码 →</a>
+          </p>
         </div>
+      </div>
 
-        <!-- ===== 设置 ===== -->
-        <div v-if="activeTab === 'settings'">
-          <h2 class="text-xl font-bold text-gray-800 mb-4">⚙️ 系统设置</h2>
-          <div class="space-y-5">
-            <div class="bg-white rounded-xl shadow-sm p-5">
-              <h3 class="font-semibold text-gray-700 mb-4">AI 模型配置</h3>
-              <div class="space-y-3">
-                <div v-for="(cfg, i) in aiConfigs" :key="i" class="flex items-center gap-3 p-3 rounded-lg border border-gray-100">
-                  <div class="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold text-xs">AI</div>
-                  <div class="flex-1">
-                    <div class="text-sm font-medium text-gray-700">{{ cfg.name }}</div>
-                    <div class="text-xs text-gray-400">{{ cfg.model }} · {{ cfg.base_url }}</div>
-                  </div>
-                  <span :class="['text-xs px-2 py-0.5 rounded-full', cfg.active ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-500']">
-                    {{ cfg.active ? '使用中' : '备用' }}
-                  </span>
-                </div>
-              </div>
-              <button @click="showAddAI = !showAddAI" class="mt-3 text-sm text-purple-600 hover:text-purple-700 font-medium">+ 添加 AI 配置</button>
-              <div v-if="showAddAI" class="mt-3 p-4 bg-gray-50 rounded-lg space-y-3">
-                <input v-model="newAI.name" placeholder="配置名称（如：我的GPT）" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-400" />
-                <input v-model="newAI.api_key" placeholder="API Key" type="password" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-400" />
-                <input v-model="newAI.base_url" placeholder="API Base URL（如：https://api.openai.com/v1）" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-400" />
-                <input v-model="newAI.model" placeholder="模型名称（如：gpt-4o）" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-400" />
-                <button @click="addAIConfig" class="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 transition-colors">保存配置</button>
-              </div>
-            </div>
-
-            <div class="bg-white rounded-xl shadow-sm p-5">
-              <h3 class="font-semibold text-gray-700 mb-4">关于本项目</h3>
-              <div class="space-y-2 text-sm text-gray-600">
-                <p>本平台基于以下开源项目构建：</p>
-                <div class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
-                  <span class="text-lg">⭐</span>
-                  <div>
-                    <a href="https://github.com/dreammis/social-auto-upload" target="_blank" class="text-purple-600 hover:underline font-medium">dreammis/social-auto-upload</a>
-                    <p class="text-xs text-gray-400">多平台视频/图文自动发布核心引擎（8,600+ Stars）</p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
-                  <span class="text-lg">⭐</span>
-                  <div>
-                    <a href="https://github.com/ZuckerChen/ss-media-tools" target="_blank" class="text-purple-600 hover:underline font-medium">ZuckerChen/ss-media-tools</a>
-                    <p class="text-xs text-gray-400">AI 内容创作与多平台发布工具</p>
-                  </div>
-                </div>
-                <p class="mt-3">
-                  <a href="https://github.com/Neb1ter/media-auto" target="_blank" class="text-purple-600 hover:underline">📦 查看本项目源码 →</a>
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </main>
-    </div>
+    </main>
   </div>
 
   <!-- 发布弹窗 -->
-  <div v-if="showPublishModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-      <h3 class="text-lg font-bold text-gray-800 mb-4">🚀 发布文章</h3>
-      <p class="text-sm text-gray-500 mb-4">选择要发布到的平台（可多选）：</p>
-      <div class="space-y-2 mb-5">
-        <label v-for="p in platforms" :key="p.platform" :class="['flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all', publishModal.platforms.includes(p.platform) ? 'border-purple-400 bg-purple-50' : 'border-gray-100 hover:border-purple-200']">
-          <input type="checkbox" v-model="publishModal.platforms" :value="p.platform" class="rounded" />
-          <span class="text-xl">{{ p.icon }}</span>
-          <div class="flex-1">
-            <span class="text-sm font-medium text-gray-700">{{ p.name }}</span>
-            <span v-if="!p.logged_in" class="text-xs text-red-400 ml-2">（需先登录）</span>
-          </div>
+  <div class="modal-overlay" v-if="showPublishModal">
+    <div class="modal">
+      <div class="modal-title">🚀 发布文章</div>
+      <div class="modal-desc">选择要发布到的平台（可多选）：</div>
+      <div class="modal-platform-list">
+        <label v-for="p in platforms" :key="p.id" :class="['modal-platform-item', publishModal.platforms.includes(p.id) ? 'checked' : '']">
+          <input type="checkbox" v-model="publishModal.platforms" :value="p.id" style="margin-right:4px" />
+          <span class="modal-platform-icon">{{ p.icon }}</span>
+          <span class="modal-platform-name">{{ p.name }}</span>
+          <span class="modal-platform-warn" v-if="!p.loggedIn">（需先登录）</span>
         </label>
       </div>
-      <div class="flex gap-3">
-        <button @click="showPublishModal = false" class="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition-colors">取消</button>
-        <button @click="confirmPublish" :disabled="publishModal.platforms.length === 0" class="flex-1 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 disabled:opacity-50 transition-colors">确认发布</button>
+      <div class="modal-actions">
+        <button class="btn btn-outline" style="flex:1" @click="showPublishModal = false">取消</button>
+        <button class="btn btn-primary" style="flex:1" :disabled="publishModal.platforms.length === 0" @click="confirmPublish">确认发布</button>
       </div>
     </div>
   </div>
 
-  <!-- 登录提示弹窗 -->
-  <div v-if="showLoginModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-      <h3 class="text-lg font-bold text-gray-800 mb-2">{{ loginModal.platform?.icon }} 登录 {{ loginModal.platform?.name }}</h3>
-      <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
-        <p class="text-sm text-blue-700 font-medium mb-1">📌 操作说明</p>
-        <p class="text-sm text-blue-600">在实际部署版本中，点击"去登录"后系统会自动打开浏览器，引导您完成一次手动扫码/账密登录。登录成功后，系统将保存 Cookie 以便后续自动发布。</p>
+  <!-- 登录弹窗 -->
+  <div class="modal-overlay" v-if="showLoginModal">
+    <div class="modal">
+      <div class="modal-title">{{ loginModal.platform?.icon }} 登录 {{ loginModal.platform?.name }}</div>
+      <div class="info-box info-box-blue" style="margin-top:10px">
+        <p><strong>📌 操作说明：</strong>在实际部署版本中，点击"去登录"后系统会自动打开浏览器，引导您完成一次手动扫码/账密登录。登录成功后，系统将保存 Cookie 以便后续自动发布。</p>
       </div>
-      <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-4">
-        <p class="text-xs text-yellow-700">⚠️ 当前为 GitHub Pages 演示模式，实际自动化发布功能需在本地或服务器部署后端服务。</p>
+      <div class="info-box info-box-yellow">
+        <p>⚠️ 当前为 GitHub Pages 演示模式，实际自动化发布功能需在本地或服务器部署后端服务。</p>
       </div>
-      <div class="flex gap-3">
-        <button @click="showLoginModal = false" class="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition-colors">关闭</button>
-        <button @click="mockLogin" class="flex-1 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 transition-colors">模拟登录（演示）</button>
+      <div class="modal-actions">
+        <button class="btn btn-outline" style="flex:1" @click="showLoginModal = false">关闭</button>
+        <button class="btn btn-primary" style="flex:1" @click="mockLogin">模拟登录（演示）</button>
       </div>
     </div>
   </div>
 
-  <!-- Toast 提示 -->
-  <div v-if="toast.show" :class="['fixed bottom-6 right-6 px-5 py-3 rounded-xl shadow-lg text-white text-sm font-medium z-50 transition-all', toast.type === 'success' ? 'bg-green-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-blue-500']">
-    {{ toast.message }}
-  </div>
+  <!-- Toast -->
+  <div v-if="toast.show" :class="['toast', 'toast-' + toast.type]">{{ toast.message }}</div>
 </div>
 
 <script>
-const { createApp, ref, reactive, computed, onMounted } = Vue;
+const { createApp, ref, reactive, computed } = Vue;
 
-// ===== Mock 数据 =====
 const MOCK_TITLES = {
-  zhihu: [
-    '深度解析：{topic}的底层逻辑与实践路径',
-    '为什么说{topic}正在改变我们的认知框架？',
-    '{topic}全面指南：从入门到精通的系统性思考'
-  ],
-  wechat: [
-    '太实用了！关于{topic}，这篇文章说透了',
-    '收藏！{topic}的完整攻略，建议反复阅读',
-    '一文搞懂{topic}，让你少走三年弯路'
-  ],
-  toutiao: [
-    '震惊！{topic}背后的秘密终于曝光',
-    '{topic}：99%的人都不知道的真相',
-    '重磅！关于{topic}的最新研究结果出炉'
-  ],
-  xiaohongshu: [
-    '✨ 超详细！{topic}保姆级教程来啦',
-    '姐妹们！{topic}真的绝了，亲测有效',
-    '分享我的{topic}经验，附完整步骤'
-  ],
-  general: [
-    '{topic}：全面解析与实践指南',
-    '深入理解{topic}：关键要点与应用策略',
-    '关于{topic}，你需要了解的一切'
-  ]
+  zhihu: ['深度解析：{t}的底层逻辑与实践路径','为什么说{t}正在改变我们的认知框架？','{t}全面指南：从入门到精通的系统性思考'],
+  wechat: ['太实用了！关于{t}，这篇文章说透了','收藏！{t}的完整攻略，建议反复阅读','一文搞懂{t}，让你少走三年弯路'],
+  toutiao: ['震惊！{t}背后的秘密终于曝光','{t}：99%的人都不知道的真相','重磅！关于{t}的最新研究结果出炉'],
+  xiaohongshu: ['✨ 超详细！{t}保姆级教程来啦','姐妹们！{t}真的绝了，亲测有效','分享我的{t}经验，附完整步骤'],
+  general: ['{t}：全面解析与实践指南','深入理解{t}：关键要点与应用策略','关于{t}，你需要了解的一切'],
 };
 
-const MOCK_ARTICLE = `## 引言
+const MOCK_OUTLINE = `**一、引言**\n- 背景介绍与问题提出\n- 本文核心观点预告\n\n**二、现状分析**\n- 当前发展态势\n- 主要挑战与机遇\n\n**三、深度解析**\n- 核心要点一：技术层面\n- 核心要点二：应用层面\n- 核心要点三：趋势展望\n\n**四、实践建议**\n- 具体操作步骤\n- 注意事项与避坑指南\n\n**五、总结**\n- 核心观点回顾\n- 行动号召`;
 
-在当今快速发展的时代，**{topic}** 已经成为越来越多人关注的核心议题。本文将从多个维度深入探讨这一话题，为您提供系统性的认知框架和实践指导。
+const MOCK_ARTICLE = `## 引言\n\n在当今快速发展的时代，**{t}** 已经成为越来越多人关注的核心议题。本文将从多个维度深入探讨这一话题，为您提供系统性的认知框架和实践指导。\n\n---\n\n## 一、背景与现状\n\n随着技术的不断进步和社会的深刻变革，{t}正在以前所未有的速度影响着我们的工作和生活方式。\n\n### 1.1 发展历程\n\n从最初的概念提出到如今的广泛应用，{t}经历了几个关键的发展阶段：\n\n- **萌芽期**：基础理论的建立与初步探索\n- **成长期**：核心技术的突破与规模化应用\n- **成熟期**：生态系统的完善与深度融合\n\n### 1.2 当前挑战\n\n尽管{t}取得了显著进展，但仍面临诸多挑战，包括技术瓶颈、应用场景的局限性以及相关法规的滞后等问题。\n\n---\n\n## 二、核心要点分析\n\n深入理解{t}需要把握以下几个关键维度：\n\n### 2.1 技术层面\n\n在技术层面，{t}的核心在于底层架构的创新与优化。通过引入先进的算法模型和工程实践，可以显著提升系统的性能和可靠性。\n\n### 2.2 应用层面\n\n从实际应用来看，{t}在以下领域展现出巨大潜力：\n\n1. **效率提升**：通过自动化流程，将人工成本降低 60% 以上\n2. **质量优化**：基于数据驱动的决策机制，持续改善输出质量\n3. **规模扩展**：灵活的架构设计支持从小规模到大规模的平滑过渡\n\n---\n\n## 三、实践策略与建议\n\n> 成功的关键不在于技术本身，而在于如何将技术与业务场景深度融合，创造真实的用户价值。\n\n**第一步**：明确目标与边界，避免盲目追求技术复杂度。\n\n**第二步**：建立完善的评估体系，用数据说话，持续迭代优化。\n\n**第三步**：注重团队能力建设，技术与人才的协同发展是长期成功的基础。\n\n---\n\n## 总结\n\n{t}代表着未来发展的重要方向。把握其核心逻辑，结合自身实际情况灵活应用，才能在这一领域取得真正的竞争优势。\n\n*关键词：{t}，实践指南，策略分析*`;
 
----
-
-## 一、背景与现状
-
-随着技术的不断进步和社会的深刻变革，{topic}正在以前所未有的速度影响着我们的工作和生活方式。
-
-### 1.1 发展历程
-
-从最初的概念提出到如今的广泛应用，{topic}经历了几个关键的发展阶段：
-
-- **萌芽期**：基础理论的建立与初步探索
-- **成长期**：核心技术的突破与规模化应用
-- **成熟期**：生态系统的完善与深度融合
-
-### 1.2 当前挑战
-
-尽管{topic}取得了显著进展，但仍面临诸多挑战，包括技术瓶颈、应用场景的局限性以及相关法规的滞后等问题。
-
----
-
-## 二、核心要点分析
-
-深入理解{topic}需要把握以下几个关键维度：
-
-### 2.1 技术层面
-
-在技术层面，{topic}的核心在于底层架构的创新与优化。通过引入先进的算法模型和工程实践，可以显著提升系统的性能和可靠性。
-
-### 2.2 应用层面
-
-从实际应用来看，{topic}在以下领域展现出巨大潜力：
-
-1. **效率提升**：通过自动化流程，将人工成本降低 60% 以上
-2. **质量优化**：基于数据驱动的决策机制，持续改善输出质量
-3. **规模扩展**：灵活的架构设计支持从小规模到大规模的平滑过渡
-
----
-
-## 三、实践策略与建议
-
-基于以上分析，我们提出以下实践建议：
-
-> 成功的关键不在于技术本身，而在于如何将技术与业务场景深度融合，创造真实的用户价值。
-
-**第一步**：明确目标与边界，避免盲目追求技术复杂度。
-
-**第二步**：建立完善的评估体系，用数据说话，持续迭代优化。
-
-**第三步**：注重团队能力建设，技术与人才的协同发展是长期成功的基础。
-
----
-
-## 总结
-
-{topic}代表着未来发展的重要方向。把握其核心逻辑，结合自身实际情况灵活应用，才能在这一领域取得真正的竞争优势。希望本文能为您提供有价值的参考与启发。
-
----
-
-*关键词：{topic}，实践指南，策略分析*`;
+function simpleMarkdown(text) {
+  if (!text) return '';
+  return text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/^### (.+)$/gm,'<h3>$1</h3>')
+    .replace(/^## (.+)$/gm,'<h2>$1</h2>')
+    .replace(/^# (.+)$/gm,'<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/^> (.+)$/gm,'<blockquote>$1</blockquote>')
+    .replace(/^---$/gm,'<hr>')
+    .replace(/^\d+\. (.+)$/gm,'<li>$1</li>')
+    .replace(/^[-*] (.+)$/gm,'<li>$1</li>')
+    .replace(/(<li>.*<\/li>\n?)+/g, s => '<ul>' + s + '</ul>')
+    .replace(/\n\n/g,'</p><p>')
+    .replace(/^(?!<[hublp])/gm, '<p>')
+    .replace(/(?<![>])$/gm, '</p>')
+    .replace(/<p><\/p>/g,'')
+    .replace(/<p>(<[hublp])/g,'$1')
+    .replace(/(<\/[hublp][^>]*>)<\/p>/g,'$1');
+}
 
 createApp({
   setup() {
@@ -606,113 +698,79 @@ createApp({
     const showAddAI = ref(false);
 
     const navItems = [
-      { id: 'dashboard', icon: '📊', label: '运营看板' },
-      { id: 'creator', icon: '✍️', label: 'AI 创作' },
-      { id: 'articles', icon: '📚', label: '文章库' },
-      { id: 'publish', icon: '🌐', label: '发布管理' },
-      { id: 'schedule', icon: '⏰', label: '定时发布' },
-      { id: 'settings', icon: '⚙️', label: '设置' },
+      {id:'dashboard',icon:'📊',label:'运营看板'},
+      {id:'creator',icon:'✍️',label:'AI 创作'},
+      {id:'articles',icon:'📚',label:'文章库'},
+      {id:'publish',icon:'🌐',label:'发布管理'},
+      {id:'schedule',icon:'⏰',label:'定时发布'},
+      {id:'settings',icon:'⚙️',label:'设置'},
     ];
 
     const platforms = reactive([
-      { platform: 'zhihu', name: '知乎', icon: '🔵', type: 'article', logged_in: false, description: '深度内容平台，适合专业分析文章' },
-      { platform: 'wechat', name: '微信公众号', icon: '🟢', type: 'article', logged_in: false, description: '微信生态核心渠道，用户粘性强' },
-      { platform: 'baijia', name: '百家号', icon: '🔴', type: 'article', logged_in: false, description: '百度流量加持，搜索曝光强' },
-      { platform: 'toutiao', name: '今日头条', icon: '🟠', type: 'article', logged_in: false, description: '算法推荐，精准触达目标用户' },
-      { platform: 'xiaohongshu', name: '小红书', icon: '🌸', type: 'note', logged_in: false, description: '年轻用户聚集，种草效果显著' },
-      { platform: 'weibo', name: '微博', icon: '🟡', type: 'post', logged_in: false, description: '热点传播，话题营销首选' },
+      {id:'zhihu',name:'知乎',icon:'🔵',type:'文章平台',desc:'深度内容，适合专业分析',loggedIn:false},
+      {id:'wechat',name:'微信公众号',icon:'🟢',type:'文章平台',desc:'微信生态，用户粘性强',loggedIn:false},
+      {id:'baijia',name:'百家号',icon:'🔴',type:'文章平台',desc:'百度流量，搜索曝光强',loggedIn:false},
+      {id:'toutiao',name:'今日头条',icon:'🟠',type:'文章平台',desc:'算法推荐，精准触达',loggedIn:false},
+      {id:'xiaohongshu',name:'小红书',icon:'🌸',type:'笔记平台',desc:'年轻用户，种草效果好',loggedIn:false},
+      {id:'weibo',name:'微博',icon:'🟡',type:'社交平台',desc:'热点传播，话题营销',loggedIn:false},
     ]);
 
     const articles = reactive([
-      { id: 1, title: '人工智能如何重塑内容创作的格局与未来', summary: '人工智能通过自动化文本生成和智能图像视频创作，大幅提升内容生产效率与质量，重塑内容创作格局。', tags: 'AI,内容创作', status: 'draft', word_count: 1837, ai_generated: true, created_at: '2026-03-01' },
+      {id:1,title:'人工智能如何重塑内容创作的格局与未来',summary:'人工智能通过自动化文本生成和智能图像视频创作，大幅提升内容生产效率与质量，重塑内容创作格局。',tags:'AI,内容创作',status:'draft',wordCount:1837,aiGenerated:true,createdAt:'2026-03-01'},
     ]);
 
     const publishTasks = reactive([]);
     const scheduledTasks = reactive([]);
 
     const creator = reactive({
-      topic: '',
-      platform: 'general',
-      keywords: '',
-      titles: [],
-      selectedTitle: '',
-      outline: '',
-      content: '',
-      loading: false,
-      previewMode: false,
+      topic:'',platform:'general',keywords:'',
+      titles:[],selectedTitle:'',outline:'',content:'',
+      loading:false,previewMode:false,
     });
 
-    const schedule = reactive({
-      articleId: '',
-      platforms: [],
-      time: '',
-      repeat: 'once',
-    });
-
-    const publishModal = reactive({ platforms: [] });
-    const loginModal = reactive({ platform: null });
-
-    const aiConfigs = reactive([
-      { name: '默认配置（gpt-4.1-mini）', model: 'gpt-4.1-mini', base_url: 'https://api.manus.im/api/llm-proxy/v1', active: true },
-    ]);
-
-    const newAI = reactive({ name: '', api_key: '', base_url: '', model: '' });
-
-    const toast = reactive({ show: false, message: '', type: 'success' });
-
-    const recentPublish = computed(() => publishTasks.slice(0, 5));
+    const schedule = reactive({articleId:'',platforms:[],time:'',repeat:'once'});
+    const publishModal = reactive({platforms:[]});
+    const loginModal = reactive({platform:null});
+    const aiConfigs = reactive([{name:'默认配置（gpt-4.1-mini）',model:'gpt-4.1-mini',baseUrl:'https://api.manus.im/api/llm-proxy/v1',active:true}]);
+    const newAI = reactive({name:'',apiKey:'',baseUrl:'',model:''});
+    const toast = reactive({show:false,message:'',type:'success'});
 
     const stats = computed(() => ({
-      articles: {
-        total: articles.length,
-        published: articles.filter(a => a.status === 'published').length,
-        ai_generated: articles.filter(a => a.ai_generated).length,
-      },
-      publish_tasks: {
-        total: publishTasks.length,
-        success: publishTasks.filter(t => t.status === 'success').length,
-      }
+      total: articles.length,
+      published: articles.filter(a=>a.status==='published').length,
+      aiGenerated: articles.filter(a=>a.aiGenerated).length,
     }));
 
     const statCards = computed(() => [
-      { icon: '📝', label: '文章总数', value: stats.value.articles.total, trend: 0 },
-      { icon: '✅', label: '已发布', value: stats.value.articles.published, trend: 0 },
-      { icon: '🤖', label: 'AI 创作', value: stats.value.articles.ai_generated, trend: 12 },
-      { icon: '📈', label: '发布成功率', value: publishTasks.length > 0 ? Math.round(stats.value.publish_tasks.success / publishTasks.length * 100) + '%' : '0%', trend: 0 },
+      {icon:'📝',label:'文章总数',value:stats.value.total,trend:0},
+      {icon:'✅',label:'已发布',value:stats.value.published,trend:0},
+      {icon:'🤖',label:'AI 创作',value:stats.value.aiGenerated,trend:12},
+      {icon:'📈',label:'发布成功率',value:publishTasks.length>0?Math.round(publishTasks.filter(t=>t.status==='success').length/publishTasks.length*100)+'%':'0%',trend:0},
     ]);
 
-    const filteredArticles = computed(() => {
-      return articles.filter(a => {
-        const matchSearch = !articleSearch.value || a.title.includes(articleSearch.value);
-        const matchFilter = articleFilter.value === 'all' || a.status === articleFilter.value;
-        return matchSearch && matchFilter;
-      });
-    });
+    const filteredArticles = computed(() =>
+      articles.filter(a => {
+        const ms = !articleSearch.value || a.title.includes(articleSearch.value);
+        const mf = articleFilter.value === 'all' || a.status === articleFilter.value;
+        return ms && mf;
+      })
+    );
 
-    function showToast(message, type = 'success') {
-      toast.message = message;
-      toast.type = type;
-      toast.show = true;
+    function showToast(msg, type='success') {
+      toast.message = msg; toast.type = type; toast.show = true;
       setTimeout(() => { toast.show = false; }, 3000);
     }
 
-    function getPlatformIcon(platformId) {
-      const p = platforms.find(p => p.platform === platformId);
-      return p ? p.icon : '🌐';
-    }
-
-    function renderMd(text) {
-      if (!text) return '';
-      try { return marked.parse(text); } catch(e) { return text; }
+    function getPlatformIcon(id) {
+      return platforms.find(p=>p.id===id)?.icon || '🌐';
     }
 
     async function generateTitles() {
       if (!creator.topic) return;
-      creator.loading = true;
-      creator.titles = [];
+      creator.loading = true; creator.titles = [];
       await new Promise(r => setTimeout(r, 1200));
-      const templates = MOCK_TITLES[creator.platform] || MOCK_TITLES.general;
-      creator.titles = templates.map(t => t.replace(/{topic}/g, creator.topic));
+      const tpls = MOCK_TITLES[creator.platform] || MOCK_TITLES.general;
+      creator.titles = tpls.map(t => t.replace(/{t}/g, creator.topic));
       creator.selectedTitle = creator.titles[0];
       creator.loading = false;
       showToast('✅ 标题生成成功，请选择一个满意的标题');
@@ -722,72 +780,69 @@ createApp({
       if (!creator.selectedTitle) return;
       creator.loading = true;
       await new Promise(r => setTimeout(r, 1000));
-      creator.outline = `## 文章大纲：${creator.selectedTitle}\n\n**一、引言**\n- 背景介绍与问题提出\n- 本文核心观点预告\n\n**二、现状分析**\n- 当前发展态势\n- 主要挑战与机遇\n\n**三、深度解析**\n- 核心要点一：技术层面\n- 核心要点二：应用层面\n- 核心要点三：趋势展望\n\n**四、实践建议**\n- 具体操作步骤\n- 注意事项与避坑指南\n\n**五、总结**\n- 核心观点回顾\n- 行动号召`;
+      creator.outline = MOCK_OUTLINE;
       creator.loading = false;
       showToast('✅ 大纲生成成功');
     }
 
     async function generateArticle() {
-      if (!creator.selectedTitle) return;
-      creator.loading = true;
-      creator.content = '';
+      if (!creator.topic) return;
+      creator.loading = true; creator.content = '';
       await new Promise(r => setTimeout(r, 2000));
-      creator.content = MOCK_ARTICLE.replace(/{topic}/g, creator.topic || creator.selectedTitle);
+      creator.content = MOCK_ARTICLE.replace(/{t}/g, creator.topic || creator.selectedTitle);
+      if (!creator.selectedTitle) creator.selectedTitle = (MOCK_TITLES.general[0]).replace(/{t}/g, creator.topic);
       creator.loading = false;
       showToast('✅ 文章生成成功，请检查并修改内容后发布');
     }
 
     function saveArticle() {
       if (!creator.content) return;
-      const newArticle = {
-        id: articles.length + 1,
+      articles.unshift({
+        id: Date.now(),
         title: creator.selectedTitle || '未命名文章',
-        summary: creator.content.substring(0, 80).replace(/[#*\n]/g, '') + '...',
+        summary: creator.content.replace(/[#*\n>-]/g,'').substring(0,80) + '...',
         tags: creator.keywords || '',
         status: 'draft',
-        word_count: creator.content.length,
-        ai_generated: true,
-        created_at: new Date().toISOString().split('T')[0],
-      };
-      articles.unshift(newArticle);
+        wordCount: creator.content.length,
+        aiGenerated: true,
+        createdAt: new Date().toISOString().split('T')[0],
+      });
       showToast('✅ 文章已保存到文章库');
     }
 
     function editArticle(a) {
       creator.selectedTitle = a.title;
-      creator.content = MOCK_ARTICLE.replace(/{topic}/g, a.title);
+      creator.content = MOCK_ARTICLE.replace(/{t}/g, a.title);
       activeTab.value = 'creator';
     }
 
-    function publishArticle(a) {
+    function publishArticleFrom(a) {
       creator.selectedTitle = a.title;
-      creator.content = a.summary;
       showPublishModal.value = true;
     }
 
     function confirmPublish() {
       if (publishModal.platforms.length === 0) return;
-      publishModal.platforms.forEach(platform => {
+      publishModal.platforms.forEach(pid => {
         publishTasks.unshift({
           id: Date.now() + Math.random(),
           title: creator.selectedTitle || '文章',
-          platform,
+          platform: platforms.find(p=>p.id===pid)?.name || pid,
           time: new Date().toLocaleString('zh-CN'),
           status: 'success',
         });
-        const p = platforms.find(p => p.platform === platform);
-        if (p) p.logged_in = true;
       });
-      const article = articles.find(a => a.title === creator.selectedTitle);
-      if (article) article.status = 'published';
+      const art = articles.find(a => a.title === creator.selectedTitle);
+      if (art) art.status = 'published';
+      const cnt = publishModal.platforms.length;
       showPublishModal.value = false;
       publishModal.platforms = [];
-      showToast(`✅ 已成功发布到 ${publishModal.platforms.length} 个平台`);
+      showToast(`✅ 已成功发布到 ${cnt} 个平台`);
     }
 
     function loginPlatform(p) {
-      if (p.logged_in) {
-        p.logged_in = false;
+      if (p.loggedIn) {
+        p.loggedIn = false;
         showToast(`已退出 ${p.name} 登录`, 'info');
       } else {
         loginModal.platform = p;
@@ -797,39 +852,37 @@ createApp({
 
     function mockLogin() {
       if (loginModal.platform) {
-        loginModal.platform.logged_in = true;
+        loginModal.platform.loggedIn = true;
         showToast(`✅ ${loginModal.platform.name} 登录成功（演示模式）`);
       }
       showLoginModal.value = false;
     }
 
     function addSchedule() {
-      const article = articles.find(a => a.id == schedule.articleId);
-      if (!article) return;
+      const art = articles.find(a => a.id == schedule.articleId);
+      if (!art) return;
       scheduledTasks.unshift({
         id: Date.now(),
-        title: article.title,
+        title: art.title,
         platforms: [...schedule.platforms],
         time: schedule.time,
         repeat: schedule.repeat,
         active: true,
       });
-      schedule.articleId = '';
-      schedule.platforms = [];
-      schedule.time = '';
+      schedule.articleId = ''; schedule.platforms = []; schedule.time = '';
       showToast('✅ 定时任务已添加');
     }
 
     function removeSchedule(id) {
-      const idx = scheduledTasks.findIndex(t => t.id === id);
-      if (idx > -1) scheduledTasks.splice(idx, 1);
+      const i = scheduledTasks.findIndex(t=>t.id===id);
+      if (i > -1) scheduledTasks.splice(i, 1);
       showToast('定时任务已删除', 'info');
     }
 
     function addAIConfig() {
-      if (!newAI.name || !newAI.api_key) return;
-      aiConfigs.push({ ...newAI, active: false });
-      newAI.name = ''; newAI.api_key = ''; newAI.base_url = ''; newAI.model = '';
+      if (!newAI.name) return;
+      aiConfigs.push({...newAI, active:false});
+      Object.assign(newAI, {name:'',apiKey:'',baseUrl:'',model:''});
       showAddAI.value = false;
       showToast('✅ AI 配置已保存');
     }
@@ -838,10 +891,11 @@ createApp({
       activeTab, navItems, platforms, articles, publishTasks, scheduledTasks,
       creator, schedule, publishModal, loginModal, aiConfigs, newAI,
       showPublishModal, showLoginModal, showAddAI,
-      articleSearch, articleFilter, toast, stats, statCards, recentPublish, filteredArticles,
-      getPlatformIcon, renderMd, generateTitles, generateOutline, generateArticle,
-      saveArticle, editArticle, publishArticle, confirmPublish, loginPlatform, mockLogin,
-      addSchedule, removeSchedule, addAIConfig,
+      articleSearch, articleFilter, toast, stats, statCards, filteredArticles,
+      getPlatformIcon, simpleMarkdown,
+      generateTitles, generateOutline, generateArticle,
+      saveArticle, editArticle, publishArticleFrom, confirmPublish,
+      loginPlatform, mockLogin, addSchedule, removeSchedule, addAIConfig,
     };
   }
 }).mount('#app');
