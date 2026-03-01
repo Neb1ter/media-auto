@@ -1076,8 +1076,12 @@ const { createApp, ref, reactive, onMounted, computed } = Vue;
 
 const API_BASE = (() => {
   const host = window.location.hostname;
-  if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:8001';
-  return window.location.origin.replace('8080-', '8001-');
+  // 本地开发：前端在 8080，后端在 8000
+  if (host === 'localhost' || host === '127.0.0.1') {
+    return 'http://localhost:8000';
+  }
+  // Railway 生产环境：前后端同域同端口，直接用当前域名
+  return window.location.origin;
 })();
 
 createApp({
