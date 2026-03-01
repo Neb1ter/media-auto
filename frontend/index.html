@@ -1489,7 +1489,30 @@
 
     <!-- ===== 设置 ===== -->
     <div v-if="activeTab === 'settings'">
-      <h2 class="text-xl font-bold text-gray-800 mb-4">⚙️ AI 模型配置</h2>
+      <h2 class="text-xl font-bold text-gray-800 mb-4">⚙️ 系统设置</h2>
+
+      <!-- 设置子标签栏 -->
+      <div class="flex space-x-1 bg-gray-100 rounded-xl p-1 mb-6">
+        <button @click="settingsSubTab = 'text_api'"
+          :class="['flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors', settingsSubTab === 'text_api' ? 'bg-white text-indigo-700 shadow' : 'text-gray-500 hover:text-gray-700']">
+          🤖 文字生成 API
+        </button>
+        <button @click="settingsSubTab = 'ai_image'"
+          :class="['flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors', settingsSubTab === 'ai_image' ? 'bg-white text-purple-700 shadow' : 'text-gray-500 hover:text-gray-700']">
+          🎨 AI 生图 API
+        </button>
+        <button @click="settingsSubTab = 'search_image'"
+          :class="['flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors', settingsSubTab === 'search_image' ? 'bg-white text-blue-700 shadow' : 'text-gray-500 hover:text-gray-700']">
+          🔍 搜图 API
+        </button>
+        <button @click="settingsSubTab = 'logs'"
+          :class="['flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors', settingsSubTab === 'logs' ? 'bg-white text-gray-700 shadow' : 'text-gray-500 hover:text-gray-700']">
+          📜 系统日志
+        </button>
+      </div>
+
+      <!-- 文字生成 API 子页面 -->
+      <div v-if="settingsSubTab === 'text_api'">
 
       <!-- 推荐配置说明 -->
       <div class="bg-gradient-to-r from-green-50 to-blue-50 rounded-xl p-5 shadow mb-6 border border-green-100">
@@ -1616,108 +1639,222 @@
           </div>
         </div>
       </div>
-      <!-- 图片 API Key 配置 -->
-      <div class="bg-white rounded-xl p-5 shadow mt-6">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="font-bold text-gray-700">🖼️ 搜图 API Key 配置</h3>
-        <span class="text-xs text-gray-400">配置后可搜索真实图片，未配置时使用演示图片</span>
-      </div>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-        <div v-for="(info, key) in imageKeyStatus" :key="key"
-          class="p-4 rounded-xl border-2 transition-all"
-          :class="info.configured ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-gray-50'">
-          <div class="flex items-center justify-between mb-2">
-            <span class="font-semibold text-sm text-gray-700">{{ info.name }}</span>
-            <span v-if="info.configured" class="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">✅ 已配置</span>
-            <span v-else class="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">未配置</span>
-          </div>
-          <p class="text-xs text-gray-500 mb-2">{{ info.description }}</p>
-          <input v-model="imageKeyForm[key]" type="password"
-            :placeholder="info.configured ? '已配置，输入新 Key 可更新' : '输入 ' + info.env_key"
-            class="w-full border rounded-lg p-2 text-xs focus:ring-2 focus:ring-indigo-300 outline-none mb-2" />
-          <a :href="info.apply_url" target="_blank"
-            class="text-xs text-indigo-500 hover:underline">免费申请 Key →</a>
-        </div>
-      </div>
-      <div class="flex items-center space-x-3">
-        <button @click="saveImageKeys" :disabled="imageKeySaving"
-          class="bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 text-white rounded-lg px-5 py-2 text-sm font-medium">
-          {{ imageKeySaving ? '保存中...' : '保存 API Key' }}
-        </button>
-        <span v-if="imageKeySaveMsg" class="text-sm" :class="imageKeySaveMsg.ok ? 'text-green-600' : 'text-red-500'">
-          {{ imageKeySaveMsg.text }}
-        </span>
-        <span class="text-xs text-gray-400 ml-auto">⚠️ Key 当前进程生效，重启后需重新配置；生产环境建议写入环境变量</span>
-      </div>
-    </div>
+      </div><!-- 文字生成 API 子页面结束 -->
 
-    <!-- 系统日志面板 -->
-    <div class="bg-white rounded-xl p-5 shadow mt-6">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="font-bold text-gray-700">📜 系统日志</h3>
-        <div class="flex items-center space-x-2">
-          <select v-model="logLevel" @change="loadLogs"
-            class="border rounded-lg px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-300 outline-none">
-            <option value="">ALL</option>
-            <option value="DEBUG">DEBUG</option>
-            <option value="INFO">INFO</option>
-            <option value="WARNING">WARNING</option>
-            <option value="ERROR">ERROR</option>
-          </select>
-          <button @click="loadLogs" :disabled="logLoading"
-            class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-1 rounded-lg">
-            {{ logLoading ? '刷新中...' : '🔄 刷新' }}
-          </button>
-          <button @click="clearLogs"
-            class="text-xs bg-red-50 hover:bg-red-100 text-red-500 px-3 py-1 rounded-lg">
-            🗑️ 清空
-          </button>
-          <label class="flex items-center space-x-1 text-xs text-gray-500 cursor-pointer">
-            <input type="checkbox" v-model="logAutoRefresh" class="rounded" />
-            <span>自动刷新</span>
-          </label>
+      <!-- AI 生图 API 子页面 -->
+      <div v-if="settingsSubTab === 'ai_image'">
+        <div class="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-5 shadow mb-6 border border-purple-100">
+          <h3 class="font-bold text-gray-700 mb-1">🍌 Nano Banana 优先，性价比最高</h3>
+          <p class="text-xs text-gray-500">生图 API 优先级：<strong>Nano Banana（Gemini）</strong> → DALL-E 3 → 通义万象 → Loremflickr（演示兖底）</p>
+          <p class="text-xs text-gray-400 mt-1">配置任意一个即可启用真实 AI 生图，推荐使用中转 API（如 API易）支持支付宝 / 微信支付</p>
         </div>
-      </div>
-      <!-- 日志级别统计 -->
-      <div class="flex flex-wrap gap-2 mb-3">
-        <div v-for="stat in logStats" :key="stat.level"
-          class="flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-medium cursor-pointer"
-          :class="stat.cls"
-          @click="logLevel = stat.level === 'ALL' ? '' : stat.level; loadLogs()">
-          <span>{{ stat.icon }}</span>
-          <span>{{ stat.level }}</span>
-          <span class="font-bold">{{ stat.count }}</span>
-        </div>
-      </div>
-      <!-- 日志终端 -->
-      <div class="bg-gray-900 rounded-xl p-3 font-mono text-xs overflow-y-auto" style="height:340px;" ref="logContainer">
-        <div v-if="logLoading" class="text-center text-gray-400 py-8">加载中...</div>
-        <div v-else-if="logs.length === 0" class="text-center text-gray-500 py-10">
-          <div class="text-3xl mb-2">📜</div>
-          <div class="text-sm">暂无日志，操作一下系统即可产生日志</div>
-        </div>
-        <div v-else>
-          <div v-for="(log, idx) in logs" :key="idx"
-            class="flex items-start space-x-2 py-0.5 border-b border-gray-800 last:border-0 hover:bg-gray-800 px-1 rounded transition-colors">
-            <span class="text-gray-500 shrink-0 w-36">{{ log.time }}</span>
-            <span class="shrink-0 w-16 font-bold"
-              :class="{
-                'text-red-400': log.level === 'ERROR',
-                'text-yellow-400': log.level === 'WARNING',
-                'text-blue-400': log.level === 'INFO',
-                'text-gray-400': log.level === 'DEBUG',
-              }">{{ log.level }}</span>
-            <span class="text-purple-400 shrink-0 w-24 truncate" :title="log.module">{{ log.module }}</span>
-            <span class="text-green-300 break-all">{{ log.message }}</span>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
+          <!-- Nano Banana 卡片 -->
+          <div class="bg-white rounded-xl p-5 shadow border-2" :class="aiImageKeyStatus.nano_banana?.configured ? 'border-green-300' : 'border-gray-200'">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <div class="font-bold text-gray-800">🍌 Nano Banana</div>
+                <div class="text-xs text-gray-400">Gemini 2.5 Flash Image</div>
+              </div>
+              <div>
+                <span v-if="aiImageKeyStatus.nano_banana?.configured" class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">✅ 已配置</span>
+                <span v-else class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">未配置</span>
+              </div>
+            </div>
+            <div class="text-xs text-gray-500 mb-3 space-y-1">
+              <div>💰 $0.02/张，性价比最高，推荐首选</div>
+              <div>🔗 建议使用 <a href="https://apiyi.com" target="_blank" class="text-indigo-500 hover:underline">API易</a> 中转，支持微信/支付宝</div>
+            </div>
+            <div class="space-y-2">
+              <div>
+                <label class="text-xs text-gray-500 block mb-1">API Key</label>
+                <input v-model="aiImageKeyForm.gemini_image_api_key" type="password"
+                  :placeholder="aiImageKeyStatus.nano_banana?.configured ? '已配置，输入新 Key 可更新' : 'sk-...（中转 Key）'"
+                  class="w-full border rounded-lg p-2 text-xs focus:ring-2 focus:ring-purple-300 outline-none" />
+              </div>
+              <div>
+                <label class="text-xs text-gray-500 block mb-1">API Base URL（中转地址）</label>
+                <input v-model="aiImageKeyForm.gemini_image_api_base" type="text"
+                  :placeholder="aiImageKeyStatus.nano_banana?.base_url || 'https://api.apiyi.com/v1'"
+                  class="w-full border rounded-lg p-2 text-xs focus:ring-2 focus:ring-purple-300 outline-none" />
+              </div>
+            </div>
+          </div>
+
+          <!-- DALL-E 3 卡片 -->
+          <div class="bg-white rounded-xl p-5 shadow border-2" :class="aiImageKeyStatus.dalle3?.configured ? 'border-green-300' : 'border-gray-200'">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <div class="font-bold text-gray-800">🎨 DALL-E 3</div>
+                <div class="text-xs text-gray-400">OpenAI 官方 / 中转</div>
+              </div>
+              <div>
+                <span v-if="aiImageKeyStatus.dalle3?.configured" class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">✅ 已配置</span>
+                <span v-else class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">未配置</span>
+              </div>
+            </div>
+            <div class="text-xs text-gray-500 mb-3 space-y-1">
+              <div>💰 $0.04/张，细节丰富质量高</div>
+              <div>🔗 支持 <a href="https://apiyi.com" target="_blank" class="text-indigo-500 hover:underline">API易</a> 等中转平台</div>
+            </div>
+            <div class="space-y-2">
+              <div>
+                <label class="text-xs text-gray-500 block mb-1">API Key</label>
+                <input v-model="aiImageKeyForm.openai_api_key" type="password"
+                  :placeholder="aiImageKeyStatus.dalle3?.configured ? '已配置，输入新 Key 可更新' : 'sk-...'"
+                  class="w-full border rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-300 outline-none" />
+              </div>
+              <div>
+                <label class="text-xs text-gray-500 block mb-1">API Base URL（中转地址，可留空）</label>
+                <input v-model="aiImageKeyForm.openai_image_base_url" type="text"
+                  :placeholder="aiImageKeyStatus.dalle3?.base_url || 'https://api.openai.com/v1'"
+                  class="w-full border rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-300 outline-none" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 通义万象 卡片 -->
+          <div class="bg-white rounded-xl p-5 shadow border-2" :class="aiImageKeyStatus.wanx?.configured ? 'border-green-300' : 'border-gray-200'">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <div class="font-bold text-gray-800">🖌️ 通义万象</div>
+                <div class="text-xs text-gray-400">阿里云 DashScope</div>
+              </div>
+              <div>
+                <span v-if="aiImageKeyStatus.wanx?.configured" class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">✅ 已配置</span>
+                <span v-else class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">未配置</span>
+              </div>
+            </div>
+            <div class="text-xs text-gray-500 mb-3 space-y-1">
+              <div>💰 有免费额度，中文 Prompt 友好</div>
+              <div>🔗 <a href="https://dashscope.console.aliyun.com/apiKey" target="_blank" class="text-indigo-500 hover:underline">阿里云控制台</a> 获取</div>
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 block mb-1">DASHSCOPE_API_KEY</label>
+              <input v-model="aiImageKeyForm.dashscope_api_key" type="password"
+                :placeholder="aiImageKeyStatus.wanx?.configured ? '已配置，输入新 Key 可更新' : 'sk-...'"
+                class="w-full border rounded-lg p-2 text-xs focus:ring-2 focus:ring-orange-300 outline-none" />
+            </div>
           </div>
         </div>
-      </div>
-      <div class="mt-2 text-xs text-gray-400 flex justify-between items-center">
-        <span>共 {{ logs.length }} 条日志（内存缓冲，最近 200 条）</span>
-        <span v-if="logLastRefresh">最后刷新：{{ logLastRefresh }}</span>
-      </div>
-    </div>
-    </div>
+
+        <div class="flex items-center space-x-3">
+          <button @click="saveAIImageKeys" :disabled="aiImageKeySaving"
+            class="bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 text-white rounded-lg px-6 py-2.5 text-sm font-medium">
+            {{ aiImageKeySaving ? '保存中...' : '💾 保存 AI 生图配置' }}
+          </button>
+          <span v-if="aiImageKeySaveMsg" class="text-sm" :class="aiImageKeySaveMsg.ok ? 'text-green-600' : 'text-red-500'">
+            {{ aiImageKeySaveMsg.text }}
+          </span>
+          <span class="text-xs text-gray-400 ml-auto">⚠️ 当前进程生效，重启后需重新配置；生产环境建议写入 Railway 环境变量</span>
+        </div>
+      </div><!-- AI 生图 API 子页面结束 -->
+
+      <!-- 搜图 API 子页面 -->
+      <div v-if="settingsSubTab === 'search_image'">
+        <div class="bg-white rounded-xl p-5 shadow">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold text-gray-700">🔍 搜图 API Key 配置</h3>
+            <span class="text-xs text-gray-400">配置后可搜索真实图片，未配置时使用演示图片</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div v-for="(info, key) in imageKeyStatus" :key="key"
+              class="p-4 rounded-xl border-2 transition-all"
+              :class="info.configured ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-gray-50'">
+              <div class="flex items-center justify-between mb-2">
+                <span class="font-semibold text-sm text-gray-700">{{ info.name }}</span>
+                <span v-if="info.configured" class="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">✅ 已配置</span>
+                <span v-else class="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">未配置</span>
+              </div>
+              <p class="text-xs text-gray-500 mb-2">{{ info.description }}</p>
+              <input v-model="imageKeyForm[key]" type="password"
+                :placeholder="info.configured ? '已配置，输入新 Key 可更新' : '输入 ' + info.env_key"
+                class="w-full border rounded-lg p-2 text-xs focus:ring-2 focus:ring-indigo-300 outline-none mb-2" />
+              <a :href="info.apply_url" target="_blank"
+                class="text-xs text-indigo-500 hover:underline">免费申请 Key →</a>
+            </div>
+          </div>
+          <div class="flex items-center space-x-3">
+            <button @click="saveImageKeys" :disabled="imageKeySaving"
+              class="bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 text-white rounded-lg px-5 py-2 text-sm font-medium">
+              {{ imageKeySaving ? '保存中...' : '保存 API Key' }}
+            </button>
+            <span v-if="imageKeySaveMsg" class="text-sm" :class="imageKeySaveMsg.ok ? 'text-green-600' : 'text-red-500'">
+              {{ imageKeySaveMsg.text }}
+            </span>
+            <span class="text-xs text-gray-400 ml-auto">⚠️ Key 当前进程生效，重启后需重新配置；生产环境建议写入环境变量</span>
+          </div>
+        </div>
+      </div><!-- 搜图 API 子页面结束 -->
+
+      <!-- 系统日志子页面 -->
+      <div v-if="settingsSubTab === 'logs'">
+        <div class="bg-white rounded-xl p-5 shadow">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold text-gray-700">📜 系统日志</h3>
+            <div class="flex items-center space-x-2">
+              <select v-model="logLevel" @change="loadLogs"
+                class="border rounded-lg px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-300 outline-none">
+                <option value="">ALL</option>
+                <option value="DEBUG">DEBUG</option>
+                <option value="INFO">INFO</option>
+                <option value="WARNING">WARNING</option>
+                <option value="ERROR">ERROR</option>
+              </select>
+              <button @click="loadLogs" :disabled="logLoading"
+                class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-1 rounded-lg">
+                {{ logLoading ? '刷新中...' : '🔄 刷新' }}
+              </button>
+              <button @click="clearLogs"
+                class="text-xs bg-red-50 hover:bg-red-100 text-red-500 px-3 py-1 rounded-lg">
+                🗑️ 清空
+              </button>
+              <label class="flex items-center space-x-1 text-xs text-gray-500 cursor-pointer">
+                <input type="checkbox" v-model="logAutoRefresh" class="rounded" />
+                <span>自动刷新</span>
+              </label>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-2 mb-3">
+            <div v-for="stat in logStats" :key="stat.level"
+              class="flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-medium cursor-pointer"
+              :class="stat.cls"
+              @click="logLevel = stat.level === 'ALL' ? '' : stat.level; loadLogs()">
+              <span>{{ stat.icon }}</span>
+              <span>{{ stat.level }}</span>
+              <span class="font-bold">{{ stat.count }}</span>
+            </div>
+          </div>
+          <div class="bg-gray-900 rounded-xl p-3 font-mono text-xs overflow-y-auto" style="height:340px;" ref="logContainer">
+            <div v-if="logLoading" class="text-center text-gray-400 py-8">加载中...</div>
+            <div v-else-if="logs.length === 0" class="text-center text-gray-500 py-10">
+              <div class="text-3xl mb-2">📜</div>
+              <div class="text-sm">暂无日志，操作一下系统即可产生日志</div>
+            </div>
+            <div v-else>
+              <div v-for="(log, idx) in logs" :key="idx"
+                class="flex items-start space-x-2 py-0.5 border-b border-gray-800 last:border-0 hover:bg-gray-800 px-1 rounded transition-colors">
+                <span class="text-gray-500 shrink-0 w-36">{{ log.time }}</span>
+                <span class="shrink-0 w-16 font-bold"
+                  :class="{
+                    'text-red-400': log.level === 'ERROR',
+                    'text-yellow-400': log.level === 'WARNING',
+                    'text-blue-400': log.level === 'INFO',
+                    'text-gray-400': log.level === 'DEBUG',
+                  }">{{ log.level }}</span>
+                <span class="text-purple-400 shrink-0 w-24 truncate" :title="log.module">{{ log.module }}</span>
+                <span class="text-green-300 break-all">{{ log.message }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="mt-2 text-xs text-gray-400 flex justify-between items-center">
+            <span>共 {{ logs.length }} 条日志（内存缓冲，最近 200 条）</span>
+            <span v-if="logLastRefresh">最后刷新：{{ logLastRefresh }}</span>
+          </div>
+        </div>
+      </div><!-- 系统日志子页面结束 -->
+    </div><!-- 设置页面结束 -->
 
 
   <!-- ===== 数据分析（DB-GPT 风格 NL→SQL）===== -->
@@ -1982,6 +2119,142 @@
     </div>
   </div>
 
+    <!-- ===== AI 生图页面 ===== -->
+    <div v-if="activeTab === 'ai_image'">
+      <div class="flex items-center justify-between mb-5">
+        <div>
+          <h2 class="text-xl font-bold text-gray-800">🎨 AI 生图工厂</h2>
+          <p class="text-sm text-gray-500 mt-0.5">Nano Banana（Gemini）· DALL-E 3 · 通义万象 — 输入描述，一键生成高质量配图</p>
+        </div>
+        <div class="flex items-center space-x-2">
+          <span v-if="aiImageKeyStatus.nano_banana?.configured" class="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-medium">🍌 Nano Banana 已就绪</span>
+          <span v-else-if="aiImageKeyStatus.dalle3?.configured" class="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full font-medium">🎨 DALL-E 3 已就绪</span>
+          <span v-else class="text-xs bg-orange-100 text-orange-700 px-3 py-1 rounded-full font-medium">⚠️ 演示模式，请在设置中配置 API Key</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- 左侧：输入区 -->
+        <div class="lg:col-span-1 space-y-4">
+          <!-- Prompt 输入 -->
+          <div class="bg-white rounded-xl p-5 shadow">
+            <h3 class="font-bold text-gray-700 mb-3">✨ 图片描述</h3>
+            <textarea v-model="standaloneImagePrompt" rows="5"
+              placeholder="描述你想要的图片：画面内容、风格、氛围感...
+例：一个小女孩在花园里玩耗，阳光明媚，温暨小清新风格"
+              class="w-full border rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-300 outline-none"></textarea>
+            <!-- 风格选择 -->
+            <div class="mt-3">
+              <div class="text-xs text-gray-500 mb-2">🎨 风格</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button v-for="s in imageStyles" :key="s.value" @click="standaloneImageStyle = s.value"
+                  :class="['text-xs px-2.5 py-1 rounded-full transition-colors', standaloneImageStyle === s.value ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']">
+                  {{ s.label }}
+                </button>
+              </div>
+            </div>
+            <!-- 平台尺寸 -->
+            <div class="mt-3">
+              <div class="text-xs text-gray-500 mb-2">📱 平台尺寸</div>
+              <div class="flex flex-wrap gap-1.5">               <button v-for="p in ['小红书1:1','微信模16:9','抖音9:16','通用']" :key="p" @click="standaloneImagePlatform = p"
+                  :class="['text-xs px-2.5 py-1 rounded-full transition-colors', standaloneImagePlatform === p ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']">
+                  {{ p }}
+                </button>
+              </div>
+            </div>
+            <!-- 生成数量 -->
+            <div class="mt-3">
+              <div class="text-xs text-gray-500 mb-2">🖼️ 生成数量</div>
+              <div class="flex gap-1.5">
+                <button v-for="n in [1,2,4]" :key="n" @click="standaloneImageCount = n"
+                  :class="['text-xs px-3 py-1 rounded-full transition-colors', standaloneImageCount === n ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']">
+                  {{ n }} 张
+                </button>
+              </div>
+            </div>
+            <!-- 生成按鈕 -->
+            <button @click="generateStandaloneImages" :disabled="standaloneImageLoading || !standaloneImagePrompt.trim()"
+              class="w-full mt-4 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 disabled:from-gray-300 disabled:to-gray-300 text-white rounded-xl py-3 text-sm font-medium shadow-sm">
+              {{ standaloneImageLoading ? '✨ AI 生成中...' : '✨ 开始生成' }}
+            </button>
+          </div>
+
+          <!-- 模型状态卡片 -->
+          <div class="bg-white rounded-xl p-5 shadow">
+            <h3 class="font-bold text-gray-700 mb-3">🤖 当前生图模型</h3>
+            <div class="space-y-2">
+              <div v-for="(info, key) in aiImageKeyStatus" :key="key"
+                class="flex items-center justify-between p-2.5 rounded-lg border text-xs"
+                :class="info.configured ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'">
+                <div>
+                  <div class="font-medium" :class="info.configured ? 'text-green-800' : 'text-gray-400'">{{ info.name }}</div>
+                  <div class="text-gray-400 mt-0.5">{{ info.price }}</div>
+                </div>
+                <span v-if="info.configured" class="text-green-600 font-bold">✅</span>
+                <span v-else class="text-gray-300">○</span>
+              </div>
+            </div>
+            <button @click="activeTab = 'settings'; settingsSubTab = 'ai_image'" class="w-full mt-3 text-xs text-indigo-500 hover:text-indigo-700 border border-indigo-200 rounded-lg py-1.5">
+              ⚙️ 配置 API Key →
+            </button>
+          </div>
+        </div>
+
+        <!-- 右侧：生成结果 -->
+        <div class="lg:col-span-2">
+          <div class="bg-white rounded-xl p-5 shadow min-h-96">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-bold text-gray-700">🖼️ 生成结果</h3>
+              <div v-if="standaloneImageGenModel" class="flex items-center space-x-2">
+                <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">🤖 {{ standaloneImageGenModel }}</span>
+              </div>
+            </div>
+
+            <!-- 生成中状态 -->
+            <div v-if="standaloneImageLoading" class="flex flex-col items-center justify-center py-20">
+              <div class="text-5xl mb-4 animate-bounce">✨</div>
+              <div class="text-gray-500 font-medium">AI 正在创作中...</div>
+              <div class="text-xs text-gray-400 mt-2">Nano Banana / DALL-E 3 / 通义万象 依次尝试</div>
+            </div>
+
+            <!-- 空状态 -->
+            <div v-else-if="standaloneImageResults.length === 0" class="flex flex-col items-center justify-center py-20 text-gray-300">
+              <div class="text-6xl mb-4">🎨</div>
+              <div class="text-gray-400 font-medium">在左侧输入描述，点击开始生成</div>
+              <div class="text-xs text-gray-300 mt-2">支持 Nano Banana、DALL-E 3、通义万象</div>
+            </div>
+
+            <!-- 图片网格 -->
+            <div v-else class="grid grid-cols-2 gap-3">
+              <div v-for="(img, idx) in standaloneImageResults" :key="idx"
+                class="img-card aspect-video group relative">
+                <img :src="img.url" :alt="'AI生成图片' + (idx+1)" class="w-full h-full object-cover" loading="lazy" />
+                <div class="img-overlay">
+                  <div class="flex space-x-2">
+                    <a :href="img.url" target="_blank" download
+                      class="bg-white bg-opacity-90 rounded-full px-3 py-1 text-xs font-medium text-indigo-700 hover:bg-opacity-100">
+                      ⬇️ 下载
+                    </a>
+                    <button @click="copyImageUrl(img.url)"
+                      class="bg-white bg-opacity-90 rounded-full px-3 py-1 text-xs font-medium text-gray-700 hover:bg-opacity-100">
+                      📋 复制链接
+                    </button>
+                  </div>
+                </div>
+                <div class="img-source-badge">{{ img.source }}</div>
+              </div>
+            </div>
+
+            <!-- 优化后的 Prompt -->
+            <div v-if="standaloneOptimizedPrompt && standaloneImageResults.length > 0" class="mt-4 p-3 bg-purple-50 rounded-lg">
+              <div class="text-xs text-purple-600 font-medium mb-1">AI 优化后的 Prompt：</div>
+              <div class="text-xs text-purple-700">{{ standaloneOptimizedPrompt }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   <!-- 发布弹窗 -->
   <div v-if="showPublishModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
     <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
@@ -2077,6 +2350,7 @@ const API_BASE = (() => {
 createApp({
   setup() {
     const activeTab = ref('dashboard');
+    const settingsSubTab = ref('text_api'); // 设置页面子标签
     const tabs = [
       { key: 'dashboard', label: '看板', icon: '📊' },
       { key: 'create', label: 'AI 创作', icon: '✍️' },
@@ -2085,6 +2359,7 @@ createApp({
       { key: 'adapt', label: '多平台适配', icon: '🔄' },
       { key: 'moderate', label: '内容审核', icon: '🛡️' },
       { key: 'publish', label: '发布管理', icon: '🌐' },
+      { key: 'ai_image', label: 'AI 生图', icon: '🎨' },
       { key: 'settings', label: '设置', icon: '⚙️' },
       { key: 'analytics', label: '数据分析', icon: '🔍' },
     ];
@@ -3159,6 +3434,120 @@ createApp({
       }
     });
 
+    // ===== AI 生图页面独立变量 =====
+    const standaloneImagePrompt = ref('');
+    const standaloneImageStyle = ref('realistic');
+    const standaloneImagePlatform = ref('通用');
+    const standaloneImageCount = ref(4);
+    const standaloneImageResults = ref([]);
+    const standaloneImageLoading = ref(false);
+    const standaloneImageGenModel = ref('');
+    const standaloneOptimizedPrompt = ref('');
+
+    async function generateStandaloneImages() {
+      if (!standaloneImagePrompt.value.trim()) return;
+      standaloneImageLoading.value = true;
+      standaloneImageResults.value = [];
+      standaloneImageGenModel.value = '';
+      standaloneOptimizedPrompt.value = '';
+      const platformMap = { '小红书1:1': 'xiaohongshu', '微信模16:9': 'wechat', '抖音9:16': 'douyin', '通用': '' };
+      const platformKey = platformMap[standaloneImagePlatform.value] || '';
+      try {
+        const data = await fetchAPI('/api/images/generate/v2', {
+          method: 'POST',
+          body: JSON.stringify({
+            prompt: standaloneImagePrompt.value,
+            style: standaloneImageStyle.value,
+            count: standaloneImageCount.value,
+            platform: platformKey || null,
+          }),
+        });
+        if (data.success) {
+          standaloneImageResults.value = data.images || [];
+          standaloneImageGenModel.value = data.model || '';
+          standaloneOptimizedPrompt.value = data.optimized_prompt || '';
+          const note = data.note ? ` · ${data.note}` : '';
+          showToast(`生成成功：${data.images?.length || 0} 张（${data.model}${note}）`);
+        } else {
+          showToast(data.message || '生成失败', 'error');
+        }
+      } catch (e) {
+        showToast('AI 生成失败：' + e.message, 'error');
+      } finally {
+        standaloneImageLoading.value = false;
+      }
+    }
+
+    function copyImageUrl(url) {
+      navigator.clipboard.writeText(url).then(() => showToast('链接已复制')).catch(() => showToast('复制失败', 'error'));
+    }
+
+    // ===== AI 生图 API Key 配置 =====
+    const aiImageKeyStatus = ref({
+      nano_banana: { name: '🍌 Nano Banana（Gemini）', configured: false, price: '$0.02/张', base_url: '' },
+      dalle3: { name: '🎨 DALL-E 3（OpenAI）', configured: false, price: '$0.04/张', base_url: '' },
+      wanx: { name: '🖌️ 通义万象（阿里云）', configured: false, price: '有免费额度', base_url: '' },
+    });
+    const aiImageKeyForm = reactive({
+      gemini_image_api_key: '',
+      gemini_image_api_base: '',
+      openai_api_key: '',
+      openai_image_base_url: '',
+      dashscope_api_key: '',
+    });
+    const aiImageKeySaving = ref(false);
+    const aiImageKeySaveMsg = ref(null);
+
+    async function loadAIImageKeyStatus() {
+      try {
+        const data = await fetchAPI('/api/settings/ai-image-keys');
+        if (data.success) {
+          Object.keys(data.status).forEach(k => {
+            if (aiImageKeyStatus.value[k]) {
+              aiImageKeyStatus.value[k] = { ...aiImageKeyStatus.value[k], ...data.status[k] };
+            }
+          });
+        }
+      } catch (e) { console.warn('AI 生图 Key 状态加载失败'); }
+    }
+
+    async function saveAIImageKeys() {
+      aiImageKeySaving.value = true;
+      aiImageKeySaveMsg.value = null;
+      try {
+        const body = {};
+        if (aiImageKeyForm.gemini_image_api_key) body.gemini_image_api_key = aiImageKeyForm.gemini_image_api_key;
+        if (aiImageKeyForm.gemini_image_api_base) body.gemini_image_api_base = aiImageKeyForm.gemini_image_api_base;
+        if (aiImageKeyForm.openai_api_key) body.openai_api_key = aiImageKeyForm.openai_api_key;
+        if (aiImageKeyForm.openai_image_base_url) body.openai_image_base_url = aiImageKeyForm.openai_image_base_url;
+        if (aiImageKeyForm.dashscope_api_key) body.dashscope_api_key = aiImageKeyForm.dashscope_api_key;
+        if (!Object.keys(body).length) {
+          aiImageKeySaveMsg.value = { ok: false, text: '请至少输入一项配置' };
+          return;
+        }
+        const data = await fetchAPI('/api/settings/ai-image-keys', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        if (data.success) {
+          aiImageKeySaveMsg.value = { ok: true, text: data.message };
+          aiImageKeyForm.gemini_image_api_key = '';
+          aiImageKeyForm.gemini_image_api_base = '';
+          aiImageKeyForm.openai_api_key = '';
+          aiImageKeyForm.openai_image_base_url = '';
+          aiImageKeyForm.dashscope_api_key = '';
+          await loadAIImageKeyStatus();
+          showToast('AI 生图配置保存成功！');
+        } else {
+          aiImageKeySaveMsg.value = { ok: false, text: data.message || '保存失败' };
+        }
+      } catch (e) {
+        aiImageKeySaveMsg.value = { ok: false, text: '保存失败: ' + e.message };
+      } finally {
+        aiImageKeySaving.value = false;
+      }
+    }
+
     // ===== 图片 API Key 配置 =====
     const imageKeyStatus = ref({
       unsplash: { name: 'Unsplash', configured: false, description: '高质量摄影图库，每小时 50 次免费请求', apply_url: 'https://unsplash.com/developers', env_key: 'UNSPLASH_ACCESS_KEY' },
@@ -3220,6 +3609,7 @@ createApp({
       await Promise.all([loadDashboard(), loadArticles(), loadAIConfigs(), loadPlatformStyles(), loadModelInfo()]);
       loadAnalyticsPresets();
       loadImageKeyStatus();
+      loadAIImageKeyStatus();
       loadLogs();
     });
 
@@ -3267,6 +3657,14 @@ createApp({
       logs, logLevel, logLoading, logAutoRefresh, logLastRefresh, logStats, loadLogs, clearLogs,
       // 图片 API Key 配置
       imageKeyStatus, imageKeyForm, imageKeySaving, imageKeySaveMsg, saveImageKeys,
+      // AI 生图页面
+      standaloneImagePrompt, standaloneImageStyle, standaloneImagePlatform, standaloneImageCount,
+      standaloneImageResults, standaloneImageLoading, standaloneImageGenModel, standaloneOptimizedPrompt,
+      generateStandaloneImages, copyImageUrl,
+      // AI 生图 API Key 配置
+      aiImageKeyStatus, aiImageKeyForm, aiImageKeySaving, aiImageKeySaveMsg, saveAIImageKeys,
+      // 设置子标签
+      settingsSubTab,
     };
   },
 
@@ -3275,7 +3673,8 @@ createApp({
       if (tab === 'articles') this.loadArticles();
       if (tab === 'publish') this.loadPublishTasks();
       if (tab === 'analytics') this.loadAnalyticsPresets();
-      if (tab === 'settings') { this.loadImageKeyStatus && this.loadImageKeyStatus(); this.loadLogs && this.loadLogs(); }
+      if (tab === 'settings') { this.loadImageKeyStatus && this.loadImageKeyStatus(); this.loadAIImageKeyStatus && this.loadAIImageKeyStatus(); this.loadLogs && this.loadLogs(); }
+      if (tab === 'ai_image') { this.loadAIImageKeyStatus && this.loadAIImageKeyStatus(); }
     }
   },
   methods: {

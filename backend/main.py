@@ -1207,12 +1207,99 @@ async def generate_image_v2(req: ImageGenerateV2Request, db: Session = Depends(g
     }
     image_size = platform_sizes.get(req.platform or "", "1792x1024")
 
+    # ── 方案 0：Nano Banana（Gemini 图像生成，性价比最高）────────────────────
+    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    gemini_base = os.environ.get("GEMINI_IMAGE_BASE_URL", "").strip()
+    if gemini_key:
+        try:
+            import httpx as _httpx
+            # 支持自定义中转地址（如 API易、云雾等），默认使用 Google 官方
+            base_url = gemini_base or "https://generativelanguage.googleapis.com/v1beta"
+            # 平台尺寸映射到 Gemini 支持的尺寸
+            gemini_size_map = {
+                "1024x1024": "1:1",
+                "1024x1792": "9:16",
+                "1792x1024": "16:9",
+            }
+            aspect_ratio = gemini_size_map.get(image_size, "16:9")
+            images = []
+            count = min(req.count, 4)
+            async with _httpx.AsyncClient(timeout=60) as hc:
+                resp = await hc.post(
+                    f"{base_url}/models/gemini-2.0-flash-preview-image-generation:generateContent",
+                    params={"key": gemini_key},
+                    json={
+                        "contents": [{"parts": [{"text": full_prompt}]}],
+                        "generationConfig": {
+                            "responseModalities": ["TEXT", "IMAGE"],
+                            "numberOfImages": count,
+                        }
+                    }
+                )
+            if resp.status_code == 200:
+                rj = resp.json()
+                for candidate in rj.get("candidates", []):
+                    for part in candidate.get("content", {}).get("parts", []):
+                        if "inlineData" in part:
+                            b64 = part["inlineData"]["data"]
+                            mime = part["inlineData"].get("mimeType", "image/png")
+                            images.append({
+                                "url": f"data:{mime};base64,{b64}",
+                                "source": "Nano Banana（Gemini）",
+                                "optimized_prompt": final_prompt,
+                            })
+                if images:
+                    return {
+                        "success": True,
+                        "images": images,
+                        "model": "Nano Banana（Gemini 2.0 Flash Image）",
+                        "prompt_used": full_prompt,
+                        "optimized_prompt": final_prompt,
+                    }
+            else:
+                logger.warning(f"Nano Banana 失败: {resp.status_code} {resp.text[:200]}")
+        except Exception as e:
+            logger.warning(f"Nano Banana（Gemini）失败: {e}")
+
+    # ── 方案 0b：Nano Banana via OpenAI-compatible API（中转站）────────────────
+    # 当 GEMINI_IMAGE_API_KEY 配置时，通过 OpenAI 兼容接口调用 Gemini 图像生成
+    gemini_compat_key = os.environ.get("GEMINI_IMAGE_API_KEY", "").strip()
+    gemini_compat_base = os.environ.get("GEMINI_IMAGE_API_BASE", "").strip()
+    if gemini_compat_key and gemini_compat_base:
+        try:
+            from openai import OpenAI as OAI
+            client = OAI(api_key=gemini_compat_key, base_url=gemini_compat_base)
+            images = []
+            for _ in range(min(req.count, 4)):
+                r = client.images.generate(
+                    model="gemini-2.5-flash-image",
+                    prompt=full_prompt,
+                    n=1,
+                    size=image_size,
+                )
+                images.append({
+                    "url": r.data[0].url,
+                    "source": "Nano Banana（Gemini）",
+                    "optimized_prompt": final_prompt,
+                })
+            if images:
+                return {
+                    "success": True,
+                    "images": images,
+                    "model": "Nano Banana（Gemini 2.5 Flash Image）",
+                    "prompt_used": full_prompt,
+                    "optimized_prompt": final_prompt,
+                }
+        except Exception as e:
+            logger.warning(f"Nano Banana（中转）失败: {e}")
+
     # ── 方案 1：DALL-E 3（OpenAI）─────────────────────────────────────────
     openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    openai_base = os.environ.get("OPENAI_IMAGE_BASE_URL", os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")).strip()
     if openai_key:
         try:
             from openai import OpenAI as OAI
-            client = OAI(api_key=openai_key, base_url="https://api.openai.com/v1")
+            client = OAI(api_key=openai_key, base_url=openai_base)
             images = []
             for _ in range(min(req.count, 4)):
                 r = client.images.generate(
@@ -1429,7 +1516,7 @@ class ImageAPIKeyRequest(BaseModel):
 @app.post("/api/settings/image-keys")
 async def save_image_api_keys(req: ImageAPIKeyRequest):
     """
-    保存图片 API Key（写入进程环境变量，重启后失效）
+    保存图片搜索 API Key（写入进程环境变量，重启后失效）
     生产环境建议通过 Railway / Docker 环境变量持久化
     """
     updated = []
@@ -1442,7 +1529,7 @@ async def save_image_api_keys(req: ImageAPIKeyRequest):
     if req.pixabay_key is not None:
         os.environ["PIXABAY_API_KEY"] = req.pixabay_key.strip()
         updated.append("Pixabay")
-    logger.info(f"图片 API Key 已更新: {', '.join(updated) if updated else '无变更'}")
+    logger.info(f"图片搜索 API Key 已更新: {', '.join(updated) if updated else '无变更'}")
     return {
         "success": True,
         "updated": updated,
@@ -1457,7 +1544,7 @@ async def save_image_api_keys(req: ImageAPIKeyRequest):
 
 @app.get("/api/settings/image-keys")
 async def get_image_api_key_status():
-    """获取图片 API Key 配置状态"""
+    """获取图片搜索 API Key 配置状态"""
     return {
         "success": True,
         "status": {
@@ -1484,4 +1571,85 @@ async def get_image_api_key_status():
             },
         },
         "note": "至少配置一个 Key 即可启用真实图片搜索，未配置时使用演示图片",
+    }
+
+
+# ===================== AI 生图 API Key 配置接口 =====================
+
+class AIImageKeyRequest(BaseModel):
+    gemini_image_api_key: Optional[str] = None   # Nano Banana（Gemini）中转 Key
+    gemini_image_api_base: Optional[str] = None  # Nano Banana 中转 Base URL
+    openai_api_key: Optional[str] = None         # DALL-E 3 Key
+    openai_image_base_url: Optional[str] = None  # DALL-E 3 中转 Base URL
+    dashscope_api_key: Optional[str] = None      # 通义万象 Key
+
+
+@app.post("/api/settings/ai-image-keys")
+async def save_ai_image_keys(req: AIImageKeyRequest):
+    """
+    保存 AI 生图 API Key（写入进程环境变量，重启后失效）
+    生产环境建议通过 Railway / Docker 环境变量持久化
+    """
+    updated = []
+    if req.gemini_image_api_key is not None:
+        os.environ["GEMINI_IMAGE_API_KEY"] = req.gemini_image_api_key.strip()
+        updated.append("Nano Banana API Key")
+    if req.gemini_image_api_base is not None:
+        os.environ["GEMINI_IMAGE_API_BASE"] = req.gemini_image_api_base.strip()
+        updated.append("Nano Banana API Base URL")
+    if req.openai_api_key is not None:
+        os.environ["OPENAI_API_KEY"] = req.openai_api_key.strip()
+        updated.append("DALL-E 3 API Key")
+    if req.openai_image_base_url is not None:
+        os.environ["OPENAI_IMAGE_BASE_URL"] = req.openai_image_base_url.strip()
+        updated.append("DALL-E 3 Base URL")
+    if req.dashscope_api_key is not None:
+        os.environ["DASHSCOPE_API_KEY"] = req.dashscope_api_key.strip()
+        updated.append("通义万象 API Key")
+    logger.info(f"AI 生图 API Key 已更新: {', '.join(updated) if updated else '无变更'}")
+    return {
+        "success": True,
+        "updated": updated,
+        "message": f"已更新 {len(updated)} 项配置，立即生效（重启后需重新配置，建议写入 Railway 环境变量）",
+    }
+
+
+@app.get("/api/settings/ai-image-keys")
+async def get_ai_image_key_status():
+    """获取 AI 生图 API Key 配置状态"""
+    return {
+        "success": True,
+        "status": {
+            "nano_banana": {
+                "configured": bool(os.environ.get("GEMINI_IMAGE_API_KEY")),
+                "name": "🍌 Nano Banana（Gemini）",
+                "description": "Google Gemini 图像生成，$0.02/张，性价比最高，推荐首选",
+                "env_key": "GEMINI_IMAGE_API_KEY",
+                "base_url": os.environ.get("GEMINI_IMAGE_API_BASE", ""),
+                "base_url_env": "GEMINI_IMAGE_API_BASE",
+                "apply_url": "https://apiyi.com",
+                "price": "$0.02/张",
+            },
+            "dalle3": {
+                "configured": bool(os.environ.get("OPENAI_API_KEY")),
+                "name": "🎨 DALL-E 3（OpenAI）",
+                "description": "OpenAI 官方图像生成，$0.04/张，细节丰富，支持中转",
+                "env_key": "OPENAI_API_KEY",
+                "base_url": os.environ.get("OPENAI_IMAGE_BASE_URL", os.environ.get("OPENAI_BASE_URL", "")),
+                "base_url_env": "OPENAI_IMAGE_BASE_URL",
+                "apply_url": "https://apiyi.com",
+                "price": "$0.04/张",
+            },
+            "wanx": {
+                "configured": bool(os.environ.get("DASHSCOPE_API_KEY")),
+                "name": "🖌️ 通义万象（阿里云）",
+                "description": "阿里云文生图，中文 prompt 友好，有免费额度",
+                "env_key": "DASHSCOPE_API_KEY",
+                "base_url": "",
+                "base_url_env": "",
+                "apply_url": "https://dashscope.console.aliyun.com/apiKey",
+                "price": "有免费额度",
+            },
+        },
+        "priority": "Nano Banana → DALL-E 3 → 通义万象 → Loremflickr（演示兜底）",
     }
