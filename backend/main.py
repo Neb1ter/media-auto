@@ -910,6 +910,95 @@ async def seo_analysis(req: SEOAnalysisRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ===================== SEO 一键整改接口 =====================
+
+class SEOFixRequest(BaseModel):
+    title: str
+    content: str
+    platform: str = "zhihu"
+    seo_result: dict  # 前端传入之前的 SEO 分析结果
+
+
+@app.post("/api/ai/seo-fix")
+async def seo_fix(req: SEOFixRequest, db: Session = Depends(get_db)):
+    """根据 SEO 分析结果一键整改文章：自动嵌入关键词、优化标题、添加内外链提示"""
+    if not req.title or not req.content:
+        raise HTTPException(status_code=400, detail="标题和内容不能为空")
+    try:
+        creator = get_ai_creator(db)
+        seo = req.seo_result
+
+        # 构建整改指令
+        primary_kws = ', '.join(seo.get('primary_keywords', []))
+        longtail_kws = ', '.join(seo.get('long_tail_keywords', []))
+        layout_tips = '\n'.join([f"- {k}: {v}" for k, v in seo.get('keyword_layout', {}).items()])
+        improvement_tips = '\n'.join([f"- {t}" for t in seo.get('improvement_tips', [])])
+        title_suggestions = seo.get('title_suggestions', [])
+        best_title = title_suggestions[0] if title_suggestions else req.title
+        internal_links = seo.get('internal_links', [])
+        internal_topics = ', '.join([l.get('topic', '') for l in internal_links])
+
+        system_prompt = f"""你是一个专业的 SEO 内容优化师。你的任务是根据具体的 SEO 分析建议，对文章进行精准优化。
+要求：
+1. 保持文章原有风格、结构和核心观点不变
+2. 自然融入主关键词（{primary_kws}）和长尾词（{longtail_kws}）
+3. 按照布局建议优化关键词位置
+4. 在适当位置自然提及相关话题（{internal_topics}）以形成内容矩阵
+5. 按照改进建议优化内容结构和可读性
+6. 如果标题不够 SEO 友好，优先使用建议标题：{best_title}"""
+
+        user_prompt = f"""请根据以下 SEO 分析建议，对文章进行优化整改。
+
+当前标题：{req.title}
+当前内容：
+{req.content}
+
+关键词布局建议：
+{layout_tips}
+
+改进建议：
+{improvement_tips}
+
+请输出两部分：
+1. 优化后的标题（如果需要修改）
+2. 优化后的完整正文
+
+输出格式：
+标题：[SEO优化后的标题]
+---
+[SEO优化后的完整正文]"""
+
+        result_text = creator._chat(
+            [{"role": "system", "content": system_prompt},
+             {"role": "user", "content": user_prompt}],
+            temperature=0.6,
+            max_tokens=4000
+        )
+
+        # 解析输出格式
+        lines = result_text.strip().split('\n')
+        new_title = req.title
+        new_content = result_text
+
+        for i, line in enumerate(lines):
+            if line.startswith('标题：') or line.startswith('标题:'):
+                new_title = line.split('：', 1)[-1].split(':', 1)[-1].strip().strip('[]')
+            if line.strip() == '---':
+                new_content = '\n'.join(lines[i+1:]).strip()
+                break
+
+        return {
+            "success": True,
+            "new_title": new_title,
+            "new_content": new_content,
+            "original_title": req.title,
+            "platform": req.platform
+        }
+    except Exception as e:
+        logger.error(f"SEO 整改失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ===================== 选题助手接口 =====================
 
 class TopicSuggestionRequest(BaseModel):

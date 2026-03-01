@@ -484,7 +484,7 @@
               ⚠️ 建议人工复核后再发布
             </div>
 
-            <!-- AI 建议操作按钮 -->
+            <!-- AI 建议操作按钮（已有改写结果） -->
             <div v-if="lastModerationResult.layer3?.was_rewritten && lastModerationResult.layer3?.rewritten_content"
               class="mt-3 pt-3 border-t border-gray-100">
               <div class="text-xs text-gray-500 mb-2">AI 已根据审核结果自动改写了文章，是否采纳？</div>
@@ -515,6 +515,29 @@
                 </button>
                 <button @click="revertAISuggestion"
                   :disabled="!aiSuggestionApplied"
+                  class="flex-1 text-sm py-2 rounded-lg font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+                  ↩ 撤回
+                </button>
+              </div>
+            </div>
+
+            <!-- 审核未通过且没有自动改写时，提供一键 AI 整改按钮 -->
+            <div v-if="!lastModerationResult.final?.passed && !lastModerationResult.layer3?.was_rewritten && lastModerationResult.status !== 'pending'"
+              class="mt-3 pt-3 border-t border-gray-100">
+              <div class="text-xs text-red-500 mb-2">⚠️ 内容存在合规问题，可让 AI 根据审核报告自动整改</div>
+              <div class="flex space-x-2">
+                <button @click="autoFixByModeration"
+                  :disabled="moderationFixLoading || moderationFixApplied"
+                  :class="['flex-1 text-sm py-2 rounded-lg font-medium transition-colors flex items-center justify-center space-x-1',
+                    moderationFixApplied ? 'bg-green-100 text-green-700 cursor-default' :
+                    moderationFixLoading ? 'bg-gray-200 text-gray-500 cursor-wait' :
+                    'bg-red-500 hover:bg-red-600 text-white']">
+                  <span v-if="moderationFixLoading">⏳ AI 整改中...</span>
+                  <span v-else-if="moderationFixApplied">✅ 已整改</span>
+                  <span v-else>🛡️ 一键 AI 整改（按审核报告）</span>
+                </button>
+                <button @click="revertModerationFix"
+                  :disabled="!moderationFixApplied"
                   class="flex-1 text-sm py-2 rounded-lg font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40">
                   ↩ 撤回
                 </button>
@@ -625,6 +648,28 @@
                   class="text-xs text-gray-600 mb-1 flex items-start space-x-1">
                   <span class="text-yellow-500">•</span><span>{{ tip }}</span>
                 </div>
+              </div>
+            </div>
+
+            <!-- SEO 一键整改按钮区 -->
+            <div class="mt-4 pt-4 border-t border-yellow-100">
+              <div class="text-xs text-yellow-700 mb-2">🔍 AI 可根据以上 SEO 建议自动优化标题和正文，自然融入关键词、优化结构</div>
+              <div class="flex space-x-2">
+                <button @click="autoFixBySEO"
+                  :disabled="seoFixLoading || seoFixApplied"
+                  :class="['flex-1 text-sm py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center space-x-1',
+                    seoFixApplied ? 'bg-green-100 text-green-700 cursor-default' :
+                    seoFixLoading ? 'bg-gray-200 text-gray-500 cursor-wait' :
+                    'bg-yellow-500 hover:bg-yellow-600 text-white']">
+                  <span v-if="seoFixLoading">⏳ SEO 优化中...</span>
+                  <span v-else-if="seoFixApplied">✅ 已 SEO 优化</span>
+                  <span v-else>🚀 一键 SEO 整改（自动嵌入关键词）</span>
+                </button>
+                <button @click="revertSEOFix"
+                  :disabled="!seoFixApplied"
+                  class="flex-1 text-sm py-2.5 rounded-lg font-medium border border-yellow-300 text-yellow-700 hover:bg-yellow-50 disabled:opacity-40">
+                  ↩ 撤回原文
+                </button>
               </div>
             </div>
           </div>
@@ -1645,6 +1690,16 @@ createApp({
     const seoResult = ref(null);
     const seoLoading = ref(false);
     const seoExpanded = ref(false);
+    // SEO 一键整改状态
+    const seoFixLoading = ref(false);
+    const seoFixApplied = ref(false);
+    let seoFixOriginalTitle = '';
+    let seoFixOriginalContent = '';
+    // 审核一键整改状态
+    const moderationFixLoading = ref(false);
+    const moderationFixApplied = ref(false);
+    let moderationFixOriginalTitle = '';
+    let moderationFixOriginalContent = '';
 
     // 选题助手状态
     const topicForm = reactive({ category: '科技', platform: 'general', include_history: true });
@@ -1801,6 +1856,100 @@ createApp({
       } finally {
         seoLoading.value = false;
       }
+    }
+
+    // SEO 一键整改
+    async function autoFixBySEO() {
+      if (!editor.title || !editor.content || !seoResult.value) {
+        showToast('请先进行 SEO 分析', 'error'); return;
+      }
+      seoFixLoading.value = true;
+      // 备份原文
+      seoFixOriginalTitle = editor.title;
+      seoFixOriginalContent = editor.content;
+      try {
+        const seoPlatform = ['zhihu', 'baijia', 'toutiao', 'wechat', 'bilibili'].includes(createForm.platform)
+          ? createForm.platform : 'zhihu';
+        const data = await fetchAPI('/api/ai/seo-fix', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: editor.title,
+            content: editor.content,
+            platform: seoPlatform,
+            seo_result: seoResult.value
+          })
+        });
+        if (data.success) {
+          editor.title = data.new_title;
+          editor.content = data.new_content;
+          seoFixApplied.value = true;
+          showToast('🚀 SEO 整改完成！关键词已自然融入，标题已优化');
+        } else {
+          showToast('SEO 整改失败', 'error');
+        }
+      } catch (e) {
+        showToast('SEO 整改失败：' + e.message, 'error');
+      } finally {
+        seoFixLoading.value = false;
+      }
+    }
+
+    function revertSEOFix() {
+      if (!seoFixApplied.value || !seoFixOriginalContent) return;
+      editor.title = seoFixOriginalTitle;
+      editor.content = seoFixOriginalContent;
+      seoFixApplied.value = false;
+      showToast('已撤回 SEO 整改，恢复原始文章');
+    }
+
+    // 审核一键整改（根据 Qwen 审核报告进行合规改写）
+    async function autoFixByModeration() {
+      if (!editor.title || !editor.content || !lastModerationResult.value) {
+        showToast('请先生成文章并完成审核', 'error'); return;
+      }
+      moderationFixLoading.value = true;
+      // 备份原文
+      moderationFixOriginalTitle = editor.title;
+      moderationFixOriginalContent = editor.content;
+      try {
+        const issues = lastModerationResult.value.layer2?.issues || [];
+        const sensitiveWords = lastModerationResult.value.layer1?.sensitive_words || [];
+        const summary = lastModerationResult.value.layer2?.summary || '';
+
+        // 构建审核问题描述
+        const issueDesc = [
+          summary ? `总体问题：${summary}` : '',
+          issues.length ? `具体问题：\n${issues.map(i => `- [${i.severity}] ${i.issue}: ${i.suggestion}`).join('\n')}` : '',
+          sensitiveWords.length ? `敏感词：${sensitiveWords.map(w => w.word).join('、')}` : ''
+        ].filter(Boolean).join('\n');
+
+        const data = await fetchAPI('/api/ai/rewrite', {
+          method: 'POST',
+          body: JSON.stringify({
+            content: editor.content,
+            platform: createForm.platform || 'general',
+            style_hint: `请根据以下审核问题进行合规整改，保持原文风格不变：\n${issueDesc}`
+          })
+        });
+        if (data.content) {
+          editor.content = data.content;
+          moderationFixApplied.value = true;
+          showToast('🛡️ 审核整改完成！已按审核报告修复内容');
+        } else {
+          showToast('整改失败', 'error');
+        }
+      } catch (e) {
+        showToast('整改失败：' + e.message, 'error');
+      } finally {
+        moderationFixLoading.value = false;
+      }
+    }
+
+    function revertModerationFix() {
+      if (!moderationFixApplied.value || !moderationFixOriginalContent) return;
+      editor.content = moderationFixOriginalContent;
+      moderationFixApplied.value = false;
+      showToast('已撤回审核整改，恢复原始文章');
     }
 
     // 选题助手功能
@@ -2412,6 +2561,10 @@ createApp({
       addMemory, applyMemory, deleteMemory, clearAllMemories,
       // SEO 分析
       seoResult, seoLoading, seoExpanded, runSEOAnalysis,
+      // SEO 一键整改
+      seoFixLoading, seoFixApplied, autoFixBySEO, revertSEOFix,
+      // 审核一键整改
+      moderationFixLoading, moderationFixApplied, autoFixByModeration, revertModerationFix,
       // 选题助手
       topicForm, topicResult, topicLoading, getTopicSuggestions, useTopicTitle,
     };
