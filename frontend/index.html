@@ -287,6 +287,19 @@
               class="w-full border rounded-lg p-2 text-sm mt-2 focus:ring-2 focus:ring-indigo-300 outline-none" />
           </div>
 
+          <!-- 需求描述 -->
+          <div class="bg-white rounded-xl p-5 shadow border-l-4 border-indigo-400">
+            <h3 class="font-bold text-gray-700 mb-1">🎯 我想让读者知道什么？</h3>
+            <p class="text-xs text-gray-400 mb-3">告诉 AI 你的核心传达目标，它会把这个目标融入文章的每一段（最高优先级）</p>
+            <textarea v-model="createForm.userRequirement" rows="3"
+              placeholder="例如：我想让读者了解这款产品真正解决了哪些痛点，感受到它的实用价值，而不是被硬广感觉劝退。&#10;&#10;或：我想让大家知道这件事背后的真实原因，不要被表面现象误导。"
+              class="w-full border border-indigo-200 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none bg-indigo-50 placeholder-gray-400"></textarea>
+            <div v-if="createForm.userRequirement" class="mt-2 flex items-center text-xs text-indigo-600">
+              <span class="mr-1">✅</span>
+              <span>AI 将以此为核心目标生成内容</span>
+            </div>
+          </div>
+
           <!-- 操作按钮 -->
           <div class="bg-white rounded-xl p-5 shadow space-y-3">
             <h3 class="font-bold text-gray-700 mb-1">⚡ 快速操作</h3>
@@ -471,6 +484,131 @@
               </button>
             </div>
             <pre class="text-xs text-gray-600 whitespace-pre-wrap bg-gray-50 p-3 rounded">{{ generatedOutline }}</pre>
+          </div>
+
+          <!-- 配套图片区域 -->
+          <div class="bg-white rounded-xl p-5 shadow">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <h3 class="font-bold text-gray-700">🖼️ 配套图片</h3>
+                <p class="text-xs text-gray-400 mt-0.5">先搜索网络图片，不满意再用 AI 生成</p>
+              </div>
+              <div class="flex space-x-2">
+                <button @click="imageMode = 'search'"
+                  :class="['text-xs px-3 py-1 rounded-full font-medium transition-colors', imageMode === 'search' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']">
+                  🔍 搜索图片
+                </button>
+                <button @click="imageMode = 'generate'"
+                  :class="['text-xs px-3 py-1 rounded-full font-medium transition-colors', imageMode === 'generate' ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']">
+                  ✨ AI 生成
+                </button>
+              </div>
+            </div>
+
+            <!-- 搜索模式 -->
+            <div v-if="imageMode === 'search'">
+              <div class="flex space-x-2 mb-3">
+                <input v-model="imageQuery" type="text"
+                  :placeholder="editor.title ? editor.title : '输入搜索关键词，如：人工智能、内容创作...'" 
+                  class="flex-1 border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none"
+                  @keyup.enter="searchImages" />
+                <button @click="searchImages" :disabled="imageLoading"
+                  class="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white px-4 py-2 rounded-lg text-sm font-medium">
+                  {{ imageLoading ? '搜索中...' : '搜索' }}
+                </button>
+              </div>
+              <!-- 图片网格 -->
+              <div v-if="imageResults.length > 0" class="grid grid-cols-3 gap-2">
+                <div v-for="(img, idx) in imageResults" :key="idx"
+                  class="relative group cursor-pointer rounded-lg overflow-hidden aspect-video bg-gray-100"
+                  @click="selectImage(img)">
+                  <img :src="img.thumb" :alt="img.alt" class="w-full h-full object-cover" loading="lazy" />
+                  <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
+                    <span class="text-white text-xs opacity-0 group-hover:opacity-100 font-medium">选择</span>
+                  </div>
+                  <div v-if="selectedImages.some(s => s.url === img.url)"
+                    class="absolute top-1 right-1 bg-blue-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                    ✓
+                  </div>
+                  <div class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 opacity-0 group-hover:opacity-100 truncate">
+                    {{ img.source }} · {{ img.author }}
+                  </div>
+                </div>
+              </div>
+              <div v-else-if="imageSearchDone && !imageLoading" class="text-center py-6 text-gray-400 text-sm">
+                <div class="text-2xl mb-2">🔍</div>
+                <div>未找到相关图片，尝试其他关键词或切换到 AI 生成</div>
+              </div>
+              <div v-else-if="!imageSearchDone" class="text-center py-6 text-gray-300 text-sm">
+                <div class="text-3xl mb-2">🖼️</div>
+                <div>输入关键词搜索配套图片</div>
+              </div>
+              <!-- 图片来源说明 -->
+              <div v-if="imageResults.length > 0" class="mt-2 text-xs text-gray-400 flex items-center justify-between">
+                <span>图片来源：Unsplash / Pexels / Pixabay（免费可商用）</span>
+                <button @click="imageMode = 'generate'" class="text-purple-500 hover:text-purple-700">不满意？用 AI 生成 →</button>
+              </div>
+            </div>
+
+            <!-- AI 生成模式 -->
+            <div v-if="imageMode === 'generate'">
+              <div class="mb-3">
+                <textarea v-model="imagePrompt" rows="2"
+                  :placeholder="editor.title ? '为「' + editor.title + '」生成配套图片，描述你想要的画面风格和内容...' : '描述你想要的图片：画面内容、风格、氛围感...'" 
+                  class="w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-purple-300 outline-none"></textarea>
+                <div class="flex items-center space-x-2 mt-2">
+                  <span class="text-xs text-gray-500">风格：</span>
+                  <button v-for="s in imageStyles" :key="s.value" @click="imageStyle = s.value"
+                    :class="['text-xs px-2.5 py-1 rounded-full transition-colors', imageStyle === s.value ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']">
+                    {{ s.label }}
+                  </button>
+                </div>
+              </div>
+              <button @click="generateImages" :disabled="imageLoading || !imagePrompt"
+                class="w-full bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 text-white rounded-lg py-2.5 text-sm font-medium">
+                {{ imageLoading ? '✨ AI 生成中...' : '✨ 调用 AI 生成图片' }}
+              </button>
+              <!-- AI 生成结果 -->
+              <div v-if="imageResults.length > 0 && imageMode === 'generate'" class="grid grid-cols-2 gap-2 mt-3">
+                <div v-for="(img, idx) in imageResults" :key="idx"
+                  class="relative group cursor-pointer rounded-lg overflow-hidden aspect-video bg-gray-100"
+                  @click="selectImage(img)">
+                  <img :src="img.url" :alt="'AI生成图片' + (idx+1)" class="w-full h-full object-cover" loading="lazy" />
+                  <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
+                    <span class="text-white text-xs opacity-0 group-hover:opacity-100 font-medium">选择</span>
+                  </div>
+                  <div v-if="selectedImages.some(s => s.url === img.url)"
+                    class="absolute top-1 right-1 bg-purple-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                    ✓
+                  </div>
+                  <div class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 opacity-0 group-hover:opacity-100">
+                    {{ img.source }}
+                  </div>
+                </div>
+              </div>
+              <div v-if="!imageResults.length && !imageLoading" class="mt-3 text-center py-4 text-gray-300 text-sm">
+                <div class="text-2xl mb-1">✨</div>
+                <div>输入描述，调用 AI 生成独一无二的配套图片</div>
+              </div>
+            </div>
+
+            <!-- 已选图片展示 -->
+            <div v-if="selectedImages.length > 0" class="mt-3 border-t pt-3">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-medium text-gray-600">已选图片 ({{ selectedImages.length }})</span>
+                <button @click="selectedImages = []" class="text-xs text-red-400 hover:text-red-600">清空</button>
+              </div>
+              <div class="flex space-x-2 overflow-x-auto pb-1">
+                <div v-for="(img, idx) in selectedImages" :key="idx" class="relative flex-shrink-0">
+                  <img :src="img.thumb || img.url" class="w-20 h-14 object-cover rounded-lg" />
+                  <button @click="selectedImages.splice(idx, 1)"
+                    class="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs">
+                    ×
+                  </button>
+                </div>
+              </div>
+              <p class="text-xs text-gray-400 mt-1">图片将随文章一起保存，可在发布时使用</p>
+            </div>
           </div>
         </div>
       </div>
@@ -1131,7 +1269,24 @@ createApp({
       platform: 'general',
       keywords: '',
       selectedTitle: '',
+      userRequirement: '',   // 用户需求描述
     });
+
+    // 图片功能状态
+    const imageMode = ref('search');        // 'search' | 'generate'
+    const imageQuery = ref('');
+    const imagePrompt = ref('');
+    const imageStyle = ref('realistic');
+    const imageResults = ref([]);
+    const selectedImages = ref([]);
+    const imageLoading = ref(false);
+    const imageSearchDone = ref(false);
+    const imageStyles = [
+      { value: 'realistic', label: '写实摄影' },
+      { value: 'illustration', label: '插画风格' },
+      { value: 'flat', label: '扁平设计' },
+      { value: 'anime', label: '动漫风格' },
+    ];
 
     const editor = reactive({ title: '', content: '' });
 
@@ -1194,9 +1349,9 @@ createApp({
       try {
         const data = await fetchAPI('/api/model-info');
         modelInfo.value = data;
-        // 检测 Qwen 审核是否可用
-        const dashscope = data.providers?.dashscope || data.providers?.alibaba;
-        moderationEnabled.value = !!(dashscope?.configured);
+        // 检测 Qwen 审核是否可用（对应 providers.qwen）
+        const qwen = data.providers?.qwen;
+        moderationEnabled.value = !!(qwen?.configured);
       } catch (e) { console.error('加载模型信息失败', e); }
     }
 
@@ -1273,6 +1428,7 @@ createApp({
             platform: createForm.platform,
             outline: generatedOutline.value || null,
             keywords,
+            user_requirement: createForm.userRequirement || null,
           }),
         });
         editor.title = data.title;
@@ -1310,6 +1466,66 @@ createApp({
       } catch (e) {
         showToast('获取失败：' + e.message, 'error');
       } finally { aiLoading.value = false; }
+    }
+
+    // 图片搜索
+    async function searchImages() {
+      const q = imageQuery.value.trim() || editor.title || createForm.topic;
+      if (!q) { showToast('请输入搜索关键词', 'error'); return; }
+      imageQuery.value = q;
+      imageLoading.value = true;
+      imageSearchDone.value = false;
+      imageResults.value = [];
+      try {
+        const data = await fetchAPI('/api/images/search', {
+          method: 'POST',
+          body: JSON.stringify({ query: q, count: 9 }),
+        });
+        if (data.success) {
+          imageResults.value = data.images || [];
+          showToast(`找到 ${data.images?.length || 0} 张图片`);
+        } else {
+          showToast(data.message || '搜索失败，请配置图片 API Key', 'error');
+        }
+      } catch (e) {
+        showToast('搜索失败：' + e.message, 'error');
+      } finally {
+        imageLoading.value = false;
+        imageSearchDone.value = true;
+      }
+    }
+
+    // AI 生成图片
+    async function generateImages() {
+      if (!imagePrompt.value.trim()) return;
+      imageLoading.value = true;
+      imageResults.value = [];
+      try {
+        const data = await fetchAPI('/api/images/generate', {
+          method: 'POST',
+          body: JSON.stringify({ prompt: imagePrompt.value, style: imageStyle.value, count: 4 }),
+        });
+        if (data.success) {
+          imageResults.value = data.images || [];
+          showToast(`AI 生成了 ${data.images?.length || 0} 张图片（${data.model}）`);
+        } else {
+          showToast(data.message || '生成失败，请配置 OPENAI_API_KEY 或 DASHSCOPE_API_KEY', 'error');
+        }
+      } catch (e) {
+        showToast('AI 生成失败：' + e.message, 'error');
+      } finally {
+        imageLoading.value = false;
+      }
+    }
+
+    // 选择/取消选择图片
+    function selectImage(img) {
+      const idx = selectedImages.value.findIndex(s => s.url === img.url);
+      if (idx >= 0) {
+        selectedImages.value.splice(idx, 1);
+      } else {
+        selectedImages.value.push(img);
+      }
     }
 
     function selectTitle(title) {
@@ -1563,6 +1779,10 @@ createApp({
       saveAIConfig, deleteAIConfig, copyToClipboard,
       renderMarkdown, formatDate, statusLabel, getPlatformIcon, getPlatformName,
       loadPublishTasks, loadArticles,
+      // 图片功能
+      imageMode, imageQuery, imagePrompt, imageStyle, imageResults, selectedImages,
+      imageLoading, imageSearchDone, imageStyles,
+      searchImages, generateImages, selectImage,
     };
   },
 

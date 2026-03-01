@@ -323,11 +323,7 @@ def moderate_with_qwen(
                 {"role": "user", "content": f"请审核以下文章（目标发布平台：{platform_list}）：\n\n{text_to_check}"}
             ],
             temperature=0.1,
-            max_tokens=1500,
-            extra_headers={
-                # 接入阿里云内容安全服务（CIP）
-                "X-DashScope-DataInspection": json.dumps({"input": "cip", "output": "cip"})
-            }
+            max_tokens=1500
         )
 
         raw = response.choices[0].message.content or ""

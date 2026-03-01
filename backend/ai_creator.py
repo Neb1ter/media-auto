@@ -515,19 +515,22 @@ class AICreator:
         )
 
     def generate_article(self, title: str, outline: Optional[str] = None,
-                         platform: str = "general", keywords: Optional[List[str]] = None) -> Dict[str, str]:
-        """生成完整文章（深度差异化版）"""
+                         platform: str = "general", keywords: Optional[List[str]] = None,
+                         user_requirement: Optional[str] = None) -> Dict[str, str]:
+        """生成完整文章（深度差异化版，支持用户需求描述）"""
         style = PLATFORM_STYLES.get(platform, PLATFORM_STYLES["general"])
         kw_str = f"\n关键词（请自然融入正文）：{', '.join(keywords)}" if keywords else ""
         outline_str = f"\n参考大纲：\n{outline}" if outline else ""
         template_str = f"\n推荐结构模板（可参考）：\n{style['structure_template']}" if style.get("structure_template") else ""
+        # 用户需求：最高优先级，直接告诉 AI 要传达什么
+        req_str = f"\n\n【核心传达目标 - 最高优先级】\n用户希望通过这篇文章让读者了解/感受到：\n{user_requirement}\n请确保文章的核心内容、论点和情感都围绕这个目标展开。" if user_requirement else ""
 
         system_prompt = self._build_platform_system_prompt(platform)
 
         user_prompt = f"""请根据以下信息，撰写一篇完整的{style['name']}平台文章。
 
 标题：{title}
-目标字数：{style['min_length']}-{style['max_length']} 字{kw_str}{outline_str}{template_str}
+目标字数：{style['min_length']}-{style['max_length']} 字{kw_str}{outline_str}{template_str}{req_str}
 
 重要提醒：
 - 这是专门为【{style['name']}】平台创作的内容，请完全按照该平台的风格、语气和格式规范来写

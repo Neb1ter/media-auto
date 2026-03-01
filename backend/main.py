@@ -69,6 +69,16 @@ class GenerateArticleRequest(BaseModel):
     platform: str = "general"
     outline: Optional[str] = None
     keywords: Optional[List[str]] = None
+    user_requirement: Optional[str] = None   # 用户需求描述：我希望传达的内容是什么
+
+class ImageSearchRequest(BaseModel):
+    query: str                              # 搜索关键词
+    count: int = 9                          # 返回图片数量
+
+class ImageGenerateRequest(BaseModel):
+    prompt: str                             # 用户描述的图片需求
+    style: str = "realistic"               # realistic / illustration / anime / flat
+    count: int = 4                          # 生成数量
 
 class RewriteRequest(BaseModel):
     content: str
@@ -176,7 +186,10 @@ async def generate_article(req: GenerateArticleRequest, db: Session = Depends(ge
     """生成完整文章（含自动 Qwen 审核 + 合规改写）"""
     try:
         creator = get_ai_creator(db)
-        result = creator.generate_article(req.title, req.outline, req.platform, req.keywords)
+        result = creator.generate_article(
+            req.title, req.outline, req.platform, req.keywords,
+            user_requirement=req.user_requirement
+        )
 
         # ── 自动审核流水线（生成后立即审核）──────────────────────────────────
         logger.info(f"开始对生成内容进行审核: {result['title'][:30]}...")
@@ -586,6 +599,205 @@ async def quick_check(req: ModerationRequest):
         "flagged_words": [m.to_dict() for m in matches],
         "block_count": sum(1 for m in matches if m.severity == "block"),
         "warn_count": sum(1 for m in matches if m.severity == "warn"),
+    }
+
+
+# ---- 图片功能 ----
+
+@app.post("/api/images/search")
+async def search_images(req: ImageSearchRequest):
+    """
+    搜索网络图片（使用 Unsplash + Pexels 免费 API）
+    优先返回高质量、可商用的图片
+    """
+    import httpx
+    results = []
+
+    # ── Unsplash（免费，高质量，无需 Key 可用演示端点）──────────────────────
+    try:
+        unsplash_key = os.environ.get("UNSPLASH_ACCESS_KEY", "")
+        if unsplash_key:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    "https://api.unsplash.com/search/photos",
+                    params={"query": req.query, "per_page": req.count, "orientation": "landscape"},
+                    headers={"Authorization": f"Client-ID {unsplash_key}"}
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for photo in data.get("results", []):
+                        results.append({
+                            "url": photo["urls"]["regular"],
+                            "thumb": photo["urls"]["small"],
+                            "source": "Unsplash",
+                            "author": photo["user"]["name"],
+                            "author_url": photo["user"]["links"]["html"],
+                            "download_url": photo["urls"]["full"],
+                            "alt": photo.get("alt_description") or req.query,
+                            "width": photo["width"],
+                            "height": photo["height"],
+                        })
+    except Exception as e:
+        logger.warning(f"Unsplash 搜索失败: {e}")
+
+    # ── Pexels（免费，高质量，需要 Key）────────────────────────────────────
+    if len(results) < req.count:
+        try:
+            pexels_key = os.environ.get("PEXELS_API_KEY", "")
+            if pexels_key:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    resp = await client.get(
+                        "https://api.pexels.com/v1/search",
+                        params={"query": req.query, "per_page": req.count - len(results), "orientation": "landscape"},
+                        headers={"Authorization": pexels_key}
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        for photo in data.get("photos", []):
+                            results.append({
+                                "url": photo["src"]["large"],
+                                "thumb": photo["src"]["medium"],
+                                "source": "Pexels",
+                                "author": photo["photographer"],
+                                "author_url": photo["photographer_url"],
+                                "download_url": photo["src"]["original"],
+                                "alt": photo.get("alt") or req.query,
+                                "width": photo["width"],
+                                "height": photo["height"],
+                            })
+        except Exception as e:
+            logger.warning(f"Pexels 搜索失败: {e}")
+
+    # ── Pixabay（免费，无版权，需要 Key）───────────────────────────────────
+    if len(results) < req.count:
+        try:
+            pixabay_key = os.environ.get("PIXABAY_API_KEY", "")
+            if pixabay_key:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    resp = await client.get(
+                        "https://pixabay.com/api/",
+                        params={
+                            "key": pixabay_key,
+                            "q": req.query,
+                            "per_page": req.count - len(results),
+                            "image_type": "photo",
+                            "orientation": "horizontal",
+                            "safesearch": "true",
+                            "lang": "zh"
+                        }
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        for hit in data.get("hits", []):
+                            results.append({
+                                "url": hit["webformatURL"],
+                                "thumb": hit["previewURL"],
+                                "source": "Pixabay",
+                                "author": hit["user"],
+                                "author_url": f"https://pixabay.com/users/{hit['user']}-{hit['user_id']}/",
+                                "download_url": hit["largeImageURL"],
+                                "alt": req.query,
+                                "width": hit["imageWidth"],
+                                "height": hit["imageHeight"],
+                            })
+        except Exception as e:
+            logger.warning(f"Pixabay 搜索失败: {e}")
+
+    # ── 兜底：若无任何 Key，返回提示 ─────────────────────────────────────
+    if not results:
+        return {
+            "success": False,
+            "images": [],
+            "message": "请在 Railway Variables 中配置 UNSPLASH_ACCESS_KEY、PEXELS_API_KEY 或 PIXABAY_API_KEY 以启用图片搜索",
+            "config_links": {
+                "Unsplash": "https://unsplash.com/developers",
+                "Pexels": "https://www.pexels.com/api/",
+                "Pixabay": "https://pixabay.com/api/docs/"
+            }
+        }
+
+    return {"success": True, "images": results[:req.count], "total": len(results)}
+
+
+@app.post("/api/images/generate")
+async def generate_image(req: ImageGenerateRequest):
+    """
+    AI 生成图片（使用 Gemini Imagen / DALL-E 3 / Stable Diffusion）
+    优先使用 GEMINI_API_KEY，其次 OPENAI_API_KEY
+    """
+    import httpx
+
+    style_prompts = {
+        "realistic": "photorealistic, high quality, 8k, professional photography",
+        "illustration": "digital illustration, flat design, colorful, modern",
+        "anime": "anime style, manga, vibrant colors, detailed",
+        "flat": "flat design, minimal, clean, vector style",
+    }
+    style_suffix = style_prompts.get(req.style, style_prompts["realistic"])
+    full_prompt = f"{req.prompt}, {style_suffix}"
+
+    # ── 优先使用 DALL-E 3（OpenAI）─────────────────────────────────────────
+    openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if openai_key:
+        try:
+            from openai import OpenAI as OAI
+            client = OAI(api_key=openai_key, base_url="https://api.openai.com/v1")
+            response = client.images.generate(
+                model="dall-e-3",
+                prompt=full_prompt,
+                n=1,
+                size="1792x1024",
+                quality="standard",
+            )
+            images = [{"url": img.url, "source": "DALL-E 3", "revised_prompt": img.revised_prompt} for img in response.data]
+            # 如果需要多张，循环生成
+            for _ in range(min(req.count - 1, 3)):
+                r2 = client.images.generate(model="dall-e-3", prompt=full_prompt, n=1, size="1792x1024", quality="standard")
+                images.append({"url": r2.data[0].url, "source": "DALL-E 3", "revised_prompt": r2.data[0].revised_prompt})
+            return {"success": True, "images": images, "model": "DALL-E 3", "prompt_used": full_prompt}
+        except Exception as e:
+            logger.warning(f"DALL-E 3 生成失败，尝试其他方案: {e}")
+
+    # ── 备选：使用 DashScope Wanx（通义万象，国内可用）──────────────────────
+    dashscope_key = os.environ.get("DASHSCOPE_API_KEY", "").strip()
+    if dashscope_key:
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                # 提交任务
+                resp = await client.post(
+                    "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+                    headers={"Authorization": f"Bearer {dashscope_key}", "X-DashScope-Async": "enable"},
+                    json={
+                        "model": "wanx2.1-t2i-turbo",
+                        "input": {"prompt": req.prompt},
+                        "parameters": {"size": "1440*960", "n": min(req.count, 4)}
+                    }
+                )
+                if resp.status_code == 200:
+                    task_id = resp.json()["output"]["task_id"]
+                    # 轮询等待结果（最多 60 秒）
+                    for _ in range(12):
+                        await asyncio.sleep(5)
+                        poll = await client.get(
+                            f"https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}",
+                            headers={"Authorization": f"Bearer {dashscope_key}"}
+                        )
+                        output = poll.json().get("output", {})
+                        if output.get("task_status") == "SUCCEEDED":
+                            images = [
+                                {"url": r["url"], "source": "通义万象 Wanx"}
+                                for r in output.get("results", [])
+                            ]
+                            return {"success": True, "images": images, "model": "通义万象 Wanx2.1", "prompt_used": req.prompt}
+                        elif output.get("task_status") in ("FAILED", "CANCELED"):
+                            break
+        except Exception as e:
+            logger.warning(f"通义万象生成失败: {e}")
+
+    return {
+        "success": False,
+        "images": [],
+        "message": "请配置 OPENAI_API_KEY（DALL-E 3）或 DASHSCOPE_API_KEY（通义万象）以启用 AI 图片生成"
     }
 
 
