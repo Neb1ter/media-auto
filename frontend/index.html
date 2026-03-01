@@ -3690,6 +3690,23 @@ createApp({
       loadLogs();
     });
 
+    // 监听标签切换，使用 Composition API 的 watch（修复 Options API this 无法访问 setup 函数的问题）
+    vWatch(activeTab, (tab) => {
+      if (tab === 'articles') loadArticles();
+      if (tab === 'publish') loadPublishTasks();
+      if (tab === 'analytics') loadAnalyticsPresets();
+      if (tab === 'settings') {
+        loadModelInfo();
+        loadAIImageKeyStatus();
+        loadImageKeyStatus();
+        loadLogs();
+      }
+      if (tab === 'ai_image') {
+        loadAIImageKeyStatus();
+        loadModelInfo();
+      }
+    });
+
     return {
       activeTab, tabs, stats, platforms, articles, publishTasks, recentTasks, aiConfigs, platformStyles,
       modelInfo, moderationEnabled,
@@ -3746,18 +3763,6 @@ createApp({
     };
   },
 
-  watch: {
-    activeTab(tab) {
-      if (tab === 'articles') this.loadArticles();
-      if (tab === 'publish') this.loadPublishTasks();
-      if (tab === 'analytics') this.loadAnalyticsPresets();
-      if (tab === 'settings') { this.loadImageKeyStatus && this.loadImageKeyStatus(); this.loadAIImageKeyStatus && this.loadAIImageKeyStatus(); this.loadLogs && this.loadLogs(); }
-      if (tab === 'ai_image') { this.loadAIImageKeyStatus && this.loadAIImageKeyStatus(); }
-    }
-  },
-  methods: {
-    async loadDashboard() {}
-  }
 }).mount('#app');
 
 // Vue 挂载完成后显示页面（替代 v-cloak）
