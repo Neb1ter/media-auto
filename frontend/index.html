@@ -1576,6 +1576,110 @@
 
   </div>
 
+    <!-- 图片 API Key 配置 -->
+    <div class="bg-white rounded-xl p-5 shadow mt-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-gray-700">🖼️ 搜图 API Key 配置</h3>
+        <span class="text-xs text-gray-400">配置后可搜索真实图片，未配置时使用演示图片</span>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div v-for="(info, key) in imageKeyStatus" :key="key"
+          class="p-4 rounded-xl border-2 transition-all"
+          :class="info.configured ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-gray-50'">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-semibold text-sm text-gray-700">{{ info.name }}</span>
+            <span v-if="info.configured" class="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">✅ 已配置</span>
+            <span v-else class="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">未配置</span>
+          </div>
+          <p class="text-xs text-gray-500 mb-2">{{ info.description }}</p>
+          <input v-model="imageKeyForm[key]" type="password"
+            :placeholder="info.configured ? '已配置，输入新 Key 可更新' : '输入 ' + info.env_key"
+            class="w-full border rounded-lg p-2 text-xs focus:ring-2 focus:ring-indigo-300 outline-none mb-2" />
+          <a :href="info.apply_url" target="_blank"
+            class="text-xs text-indigo-500 hover:underline">免费申请 Key →</a>
+        </div>
+      </div>
+      <div class="flex items-center space-x-3">
+        <button @click="saveImageKeys" :disabled="imageKeySaving"
+          class="bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 text-white rounded-lg px-5 py-2 text-sm font-medium">
+          {{ imageKeySaving ? '保存中...' : '保存 API Key' }}
+        </button>
+        <span v-if="imageKeySaveMsg" class="text-sm" :class="imageKeySaveMsg.ok ? 'text-green-600' : 'text-red-500'">
+          {{ imageKeySaveMsg.text }}
+        </span>
+        <span class="text-xs text-gray-400 ml-auto">⚠️ Key 当前进程生效，重启后需重新配置；生产环境建议写入环境变量</span>
+      </div>
+    </div>
+
+    <!-- 系统日志面板 -->
+    <div class="bg-white rounded-xl p-5 shadow mt-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-gray-700">📜 系统日志</h3>
+        <div class="flex items-center space-x-2">
+          <select v-model="logLevel" @change="loadLogs"
+            class="border rounded-lg px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-300 outline-none">
+            <option value="">ALL</option>
+            <option value="DEBUG">DEBUG</option>
+            <option value="INFO">INFO</option>
+            <option value="WARNING">WARNING</option>
+            <option value="ERROR">ERROR</option>
+          </select>
+          <button @click="loadLogs" :disabled="logLoading"
+            class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-1 rounded-lg">
+            {{ logLoading ? '刷新中...' : '🔄 刷新' }}
+          </button>
+          <button @click="clearLogs"
+            class="text-xs bg-red-50 hover:bg-red-100 text-red-500 px-3 py-1 rounded-lg">
+            🗑️ 清空
+          </button>
+          <label class="flex items-center space-x-1 text-xs text-gray-500 cursor-pointer">
+            <input type="checkbox" v-model="logAutoRefresh" class="rounded" />
+            <span>自动刷新</span>
+          </label>
+        </div>
+      </div>
+      <!-- 日志级别统计 -->
+      <div class="flex flex-wrap gap-2 mb-3">
+        <div v-for="stat in logStats" :key="stat.level"
+          class="flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-medium cursor-pointer"
+          :class="stat.cls"
+          @click="logLevel = stat.level === 'ALL' ? '' : stat.level; loadLogs()">
+          <span>{{ stat.icon }}</span>
+          <span>{{ stat.level }}</span>
+          <span class="font-bold">{{ stat.count }}</span>
+        </div>
+      </div>
+      <!-- 日志终端 -->
+      <div class="bg-gray-900 rounded-xl p-3 font-mono text-xs overflow-y-auto" style="height:340px;" ref="logContainer">
+        <div v-if="logLoading" class="text-center text-gray-400 py-8">加载中...</div>
+        <div v-else-if="logs.length === 0" class="text-center text-gray-500 py-10">
+          <div class="text-3xl mb-2">📜</div>
+          <div class="text-sm">暂无日志，操作一下系统即可产生日志</div>
+        </div>
+        <div v-else>
+          <div v-for="(log, idx) in logs" :key="idx"
+            class="flex items-start space-x-2 py-0.5 border-b border-gray-800 last:border-0 hover:bg-gray-800 px-1 rounded transition-colors">
+            <span class="text-gray-500 shrink-0 w-36">{{ log.time }}</span>
+            <span class="shrink-0 w-16 font-bold"
+              :class="{
+                'text-red-400': log.level === 'ERROR',
+                'text-yellow-400': log.level === 'WARNING',
+                'text-blue-400': log.level === 'INFO',
+                'text-gray-400': log.level === 'DEBUG',
+              }">{{ log.level }}</span>
+            <span class="text-purple-400 shrink-0 w-24 truncate" :title="log.module">{{ log.module }}</span>
+            <span class="text-green-300 break-all">{{ log.message }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="mt-2 text-xs text-gray-400 flex justify-between items-center">
+        <span>共 {{ logs.length }} 条日志（内存缓冲，最近 200 条）</span>
+        <span v-if="logLastRefresh">最后刷新：{{ logLastRefresh }}</span>
+      </div>
+    </div>
+  </div>
+
+
   <!-- ===== 数据分析（DB-GPT 风格 NL→SQL）===== -->
   <div v-if="activeTab === 'analytics'">
     <div class="flex items-center justify-between mb-5">
@@ -2999,10 +3103,126 @@ createApp({
       return linePointsArr(labels, values).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
     }
 
+
+    // ===== 系统日志 =====
+    const logs = ref([]);
+    const logLevel = ref('');
+    const logLoading = ref(false);
+    const logAutoRefresh = ref(false);
+    const logLastRefresh = ref('');
+    let logTimer = null;
+
+    const logStats = computed(() => {
+      const counts = { ERROR: 0, WARNING: 0, INFO: 0, DEBUG: 0 };
+      logs.value.forEach(l => { if (counts[l.level] !== undefined) counts[l.level]++; });
+      return [
+        { level: 'ERROR', count: counts.ERROR, icon: '🔴', cls: 'bg-red-100 text-red-700' },
+        { level: 'WARNING', count: counts.WARNING, icon: '🟡', cls: 'bg-yellow-100 text-yellow-700' },
+        { level: 'INFO', count: counts.INFO, icon: '🔵', cls: 'bg-blue-100 text-blue-700' },
+        { level: 'DEBUG', count: counts.DEBUG, icon: '⚪', cls: 'bg-gray-100 text-gray-600' },
+      ];
+    });
+
+    async function loadLogs() {
+      logLoading.value = true;
+      try {
+        const params = new URLSearchParams();
+        if (logLevel.value) params.set('level', logLevel.value);
+        params.set('limit', '100');
+        const data = await fetchAPI(`/api/logs?${params}`);
+        if (data.success) {
+          logs.value = data.logs || [];
+          logLastRefresh.value = new Date().toLocaleTimeString();
+        }
+      } catch (e) {
+        console.warn('日志加载失败:', e.message);
+      } finally {
+        logLoading.value = false;
+      }
+    }
+
+    async function clearLogs() {
+      try {
+        await fetchAPI('/api/logs', { method: 'DELETE' });
+        logs.value = [];
+        showToast('日志已清空');
+      } catch (e) {
+        showToast('清空失败: ' + e.message, 'error');
+      }
+    }
+
+    // 自动刷新日志（当 logAutoRefresh 开启时）
+    const { watch: vWatch } = Vue;
+    vWatch(logAutoRefresh, (val) => {
+      if (val) {
+        logTimer = setInterval(loadLogs, 5000);
+      } else {
+        if (logTimer) clearInterval(logTimer);
+      }
+    });
+
+    // ===== 图片 API Key 配置 =====
+    const imageKeyStatus = ref({
+      unsplash: { name: 'Unsplash', configured: false, description: '高质量摄影图库，每小时 50 次免费请求', apply_url: 'https://unsplash.com/developers', env_key: 'UNSPLASH_ACCESS_KEY' },
+      pexels: { name: 'Pexels', configured: false, description: '免费商用图库，无版权限制，每月 25000 次请求', apply_url: 'https://www.pexels.com/api/', env_key: 'PEXELS_API_KEY' },
+      pixabay: { name: 'Pixabay', configured: false, description: 'CC0 授权图库，每小时 100 次免费请求', apply_url: 'https://pixabay.com/api/docs/', env_key: 'PIXABAY_API_KEY' },
+    });
+    const imageKeyForm = reactive({ unsplash: '', pexels: '', pixabay: '' });
+    const imageKeySaving = ref(false);
+    const imageKeySaveMsg = ref(null);
+
+    async function loadImageKeyStatus() {
+      try {
+        const data = await fetchAPI('/api/settings/image-keys');
+        if (data.success) {
+          Object.keys(data.status).forEach(k => {
+            if (imageKeyStatus.value[k]) {
+              imageKeyStatus.value[k] = { ...imageKeyStatus.value[k], ...data.status[k] };
+            }
+          });
+        }
+      } catch (e) { console.warn('图片 Key 状态加载失败'); }
+    }
+
+    async function saveImageKeys() {
+      imageKeySaving.value = true;
+      imageKeySaveMsg.value = null;
+      try {
+        const body = {};
+        if (imageKeyForm.unsplash) body.unsplash_key = imageKeyForm.unsplash;
+        if (imageKeyForm.pexels) body.pexels_key = imageKeyForm.pexels;
+        if (imageKeyForm.pixabay) body.pixabay_key = imageKeyForm.pixabay;
+        if (!Object.keys(body).length) {
+          imageKeySaveMsg.value = { ok: false, text: '请至少输入一个 Key' };
+          return;
+        }
+        const data = await fetchAPI('/api/settings/image-keys', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        if (data.success) {
+          imageKeySaveMsg.value = { ok: true, text: data.message };
+          imageKeyForm.unsplash = '';
+          imageKeyForm.pexels = '';
+          imageKeyForm.pixabay = '';
+          await loadImageKeyStatus();
+          showToast('API Key 保存成功！');
+        } else {
+          imageKeySaveMsg.value = { ok: false, text: data.message || '保存失败' };
+        }
+      } catch (e) {
+        imageKeySaveMsg.value = { ok: false, text: '保存失败: ' + e.message };
+      } finally {
+        imageKeySaving.value = false;
+      }
+    }
+
     onMounted(async () => {
       loadMemories(); // 优先加载本地记忆（无需网络）
       await Promise.all([loadDashboard(), loadArticles(), loadAIConfigs(), loadPlatformStyles(), loadModelInfo()]);
       loadAnalyticsPresets();
+      loadImageKeyStatus();
+      loadLogs();
     });
 
     return {
@@ -3045,6 +3265,10 @@ createApp({
       analyticsHistory, showSQL, pieHover, lineChartWidth, quickQuestions,
       runAnalyticsQuery, chartTypeLabel, barColor, barWidth, pieSlices,
       linePoints, linePointsArr,
+      // 系统日志
+      logs, logLevel, logLoading, logAutoRefresh, logLastRefresh, logStats, loadLogs, clearLogs,
+      // 图片 API Key 配置
+      imageKeyStatus, imageKeyForm, imageKeySaving, imageKeySaveMsg, saveImageKeys,
     };
   },
 
@@ -3053,6 +3277,7 @@ createApp({
       if (tab === 'articles') this.loadArticles();
       if (tab === 'publish') this.loadPublishTasks();
       if (tab === 'analytics') this.loadAnalyticsPresets();
+      if (tab === 'settings') { this.loadImageKeyStatus && this.loadImageKeyStatus(); this.loadLogs && this.loadLogs(); }
     }
   },
   methods: {

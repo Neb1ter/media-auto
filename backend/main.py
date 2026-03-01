@@ -772,20 +772,59 @@ async def search_images(req: ImageSearchRequest):
         except Exception as e:
             logger.warning(f"Pixabay 搜索失败: {e}")
 
-    # ── 兜底：若无任何 Key，返回提示 ─────────────────────────────────────
+    # ── 兜底：Loremflickr（关键词匹配，无需 Key）+ Picsum Photos ──────────
     if not results:
-        return {
-            "success": False,
-            "images": [],
-            "message": "请在 Railway Variables 中配置 UNSPLASH_ACCESS_KEY、PEXELS_API_KEY 或 PIXABAY_API_KEY 以启用图片搜索",
-            "config_links": {
-                "Unsplash": "https://unsplash.com/developers",
-                "Pexels": "https://www.pexels.com/api/",
-                "Pixabay": "https://pixabay.com/api/docs/"
-            }
-        }
+        try:
+            import urllib.parse
+            keyword = urllib.parse.quote(req.query.replace(' ', ','))
+            # Loremflickr 支持关键词，返回真实摄影图片
+            loremflickr_results = []
+            for i in range(min(req.count, 9)):
+                w, h = 800, 600
+                # 使用随机 lock 参数避免重复
+                url = f"https://loremflickr.com/{w}/{h}/{keyword}?lock={i+1}"
+                thumb_url = f"https://loremflickr.com/400/300/{keyword}?lock={i+1}"
+                loremflickr_results.append({
+                    "url": url,
+                    "thumb": thumb_url,
+                    "source": "Loremflickr（演示）",
+                    "author": "Flickr Community",
+                    "author_url": "https://loremflickr.com",
+                    "download_url": url,
+                    "alt": req.query,
+                    "width": w,
+                    "height": h,
+                    "is_demo": True,
+                })
+            results.extend(loremflickr_results)
+            logger.info(f"使用 Loremflickr 兜底，关键词: {req.query}")
+        except Exception as e:
+            logger.warning(f"Loremflickr 兜底失败: {e}")
 
-    return {"success": True, "images": results[:req.count], "total": len(results)}
+    if not results:
+        # 最终兜底：Picsum Photos（随机高质量图片）
+        for i in range(min(req.count, 9)):
+            pic_id = (hash(req.query) + i * 37) % 1000
+            results.append({
+                "url": f"https://picsum.photos/id/{pic_id}/800/600",
+                "thumb": f"https://picsum.photos/id/{pic_id}/400/300",
+                "source": "Picsum Photos（演示）",
+                "author": "Picsum",
+                "author_url": "https://picsum.photos",
+                "download_url": f"https://picsum.photos/id/{pic_id}/1600/1200",
+                "alt": req.query,
+                "width": 800,
+                "height": 600,
+                "is_demo": True,
+            })
+
+    return {
+        "success": True,
+        "images": results[:req.count],
+        "total": len(results),
+        "has_demo": any(r.get("is_demo") for r in results[:req.count]),
+        "demo_note": "当前使用演示图片，配置 UNSPLASH_ACCESS_KEY / PEXELS_API_KEY / PIXABAY_API_KEY 后可搜索真实图片" if any(r.get("is_demo") for r in results[:req.count]) else None,
+    }
 
 
 @app.post("/api/images/generate")
@@ -1239,33 +1278,60 @@ async def generate_image_v2(req: ImageGenerateV2Request, db: Session = Depends(g
         except Exception as e:
             logger.warning(f"通义万象失败: {e}")
 
-    # ── 方案 3：Pollinations.ai（免费，无需 API Key）────────────────────────
+    # ── 方案 3：Loremflickr（关键词匹配真实图片，无需 Key）───────────────
     try:
         import urllib.parse
-        encoded = urllib.parse.quote(full_prompt)
+        # 提取关键词：优先使用用户原始描述，如果是英文则直接使用
+        kw_source = req.prompt if req.prompt else final_prompt
+        # 取前三个单词作为关键词
+        kw_words = [w for w in kw_source.replace(',', ' ').split() if len(w) > 2][:3]
+        keyword = ','.join(kw_words) if kw_words else 'technology'
+        keyword_enc = urllib.parse.quote(keyword)
+        w_px, h_px = (1024, 1024) if image_size == "1024x1024" else \
+                     (1024, 1792) if image_size == "1024x1792" else (1792, 1024)
         images = []
-        seeds = [42, 123, 456, 789]
         for i in range(min(req.count, 4)):
-            seed = seeds[i % len(seeds)]
-            w, h = (1792, 1024) if "x" not in image_size else (
-                int(image_size.split("x")[0]), int(image_size.split("x")[1])
-            )
-            url = f"https://image.pollinations.ai/prompt/{encoded}?width={w}&height={h}&seed={seed}&nologo=true&enhance=true"
+            url = f"https://loremflickr.com/{w_px}/{h_px}/{keyword_enc}?lock={i+10}"
             images.append({
                 "url": url,
-                "source": "Pollinations.ai（免费）",
+                "thumb": f"https://loremflickr.com/400/300/{keyword_enc}?lock={i+10}",
+                "source": "Loremflickr（演示）",
                 "optimized_prompt": final_prompt,
+                "is_demo": True,
             })
         return {
             "success": True,
             "images": images,
-            "model": "Pollinations.ai",
+            "model": "Loremflickr（演示）",
             "prompt_used": full_prompt,
             "optimized_prompt": final_prompt,
-            "note": "当前使用免费图像服务（Pollinations.ai），配置 OPENAI_API_KEY 可升级为 DALL-E 3",
+            "note": "当前使用演示图片（Loremflickr），配置 OPENAI_API_KEY 可升级为 DALL-E 3 真实 AI 生成",
         }
     except Exception as e:
-        logger.error(f"Pollinations 失败: {e}")
+        logger.error(f"Loremflickr 失败: {e}")
+
+    # ── 最终兜底：Picsum Photos（随机高质量图片）────────────────────
+    try:
+        images = []
+        for i in range(min(req.count, 4)):
+            pic_id = (abs(hash(final_prompt)) + i * 37) % 1000
+            images.append({
+                "url": f"https://picsum.photos/id/{pic_id}/800/600",
+                "thumb": f"https://picsum.photos/id/{pic_id}/400/300",
+                "source": "Picsum Photos（演示）",
+                "optimized_prompt": final_prompt,
+                "is_demo": True,
+            })
+        return {
+            "success": True,
+            "images": images,
+            "model": "Picsum Photos（演示）",
+            "prompt_used": full_prompt,
+            "optimized_prompt": final_prompt,
+            "note": "当前使用演示图片，配置 OPENAI_API_KEY 可升级为 DALL-E 3 真实 AI 生成",
+        }
+    except Exception as e:
+        logger.error(f"Picsum 失败: {e}")
 
     return {
         "success": False,
@@ -1273,3 +1339,149 @@ async def generate_image_v2(req: ImageGenerateV2Request, db: Session = Depends(g
         "message": "所有图像生成方案均失败，请检查网络连接或配置 API Key",
     }
 
+
+
+# ===================== 系统日志 API =====================
+
+# 内存日志缓冲（最近 200 条）
+import collections
+_log_buffer: collections.deque = collections.deque(maxlen=200)
+
+class _BufferSink:
+    """loguru sink：将日志同时写入内存缓冲"""
+    def write(self, message):
+        record = message.record
+        _log_buffer.append({
+            "time": record["time"].strftime("%Y-%m-%d %H:%M:%S"),
+            "level": record["level"].name,
+            "module": record["name"],
+            "message": record["message"],
+        })
+    def __call__(self, message):
+        self.write(message)
+
+# 注册内存 sink
+logger.add(_BufferSink(), level="DEBUG", format="{message}")
+
+
+@app.get("/api/logs")
+async def get_logs(
+    level: Optional[str] = None,
+    module: Optional[str] = None,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    """获取系统日志（内存缓冲 + 数据库）"""
+    # 先从内存缓冲取最新日志
+    mem_logs = list(reversed(list(_log_buffer)))
+    if level:
+        mem_logs = [l for l in mem_logs if l["level"] == level.upper()]
+    if module:
+        mem_logs = [l for l in mem_logs if module.lower() in l["module"].lower()]
+    mem_logs = mem_logs[:limit]
+
+    # 同时从数据库取持久化日志
+    try:
+        from models import SystemLog
+        q = db.query(SystemLog).order_by(SystemLog.created_at.desc())
+        if level:
+            q = q.filter(SystemLog.level == level.upper())
+        if module:
+            q = q.filter(SystemLog.module.contains(module))
+        db_logs = [
+            {
+                "time": l.created_at.strftime("%Y-%m-%d %H:%M:%S") if l.created_at else "",
+                "level": l.level or "INFO",
+                "module": l.module or "system",
+                "message": l.message or "",
+                "source": "db",
+            }
+            for l in q.limit(limit).all()
+        ]
+    except Exception:
+        db_logs = []
+
+    # 合并去重（内存优先）
+    combined = mem_logs[:limit]
+    return {
+        "success": True,
+        "logs": combined,
+        "db_logs": db_logs[:50],
+        "total": len(combined),
+    }
+
+
+@app.delete("/api/logs")
+async def clear_logs():
+    """清空内存日志缓冲"""
+    _log_buffer.clear()
+    return {"success": True, "message": "日志已清空"}
+
+
+# ===================== 图片 API Key 配置接口 =====================
+
+class ImageAPIKeyRequest(BaseModel):
+    unsplash_key: Optional[str] = None
+    pexels_key: Optional[str] = None
+    pixabay_key: Optional[str] = None
+
+
+@app.post("/api/settings/image-keys")
+async def save_image_api_keys(req: ImageAPIKeyRequest):
+    """
+    保存图片 API Key（写入进程环境变量，重启后失效）
+    生产环境建议通过 Railway / Docker 环境变量持久化
+    """
+    updated = []
+    if req.unsplash_key is not None:
+        os.environ["UNSPLASH_ACCESS_KEY"] = req.unsplash_key.strip()
+        updated.append("Unsplash")
+    if req.pexels_key is not None:
+        os.environ["PEXELS_API_KEY"] = req.pexels_key.strip()
+        updated.append("Pexels")
+    if req.pixabay_key is not None:
+        os.environ["PIXABAY_API_KEY"] = req.pixabay_key.strip()
+        updated.append("Pixabay")
+    logger.info(f"图片 API Key 已更新: {', '.join(updated) if updated else '无变更'}")
+    return {
+        "success": True,
+        "updated": updated,
+        "message": f"已更新 {len(updated)} 个 Key，立即生效（重启后需重新配置，建议写入环境变量）",
+        "status": {
+            "unsplash": bool(os.environ.get("UNSPLASH_ACCESS_KEY")),
+            "pexels": bool(os.environ.get("PEXELS_API_KEY")),
+            "pixabay": bool(os.environ.get("PIXABAY_API_KEY")),
+        }
+    }
+
+
+@app.get("/api/settings/image-keys")
+async def get_image_api_key_status():
+    """获取图片 API Key 配置状态"""
+    return {
+        "success": True,
+        "status": {
+            "unsplash": {
+                "configured": bool(os.environ.get("UNSPLASH_ACCESS_KEY")),
+                "name": "Unsplash",
+                "description": "高质量摄影图库，每小时 50 次免费请求",
+                "apply_url": "https://unsplash.com/developers",
+                "env_key": "UNSPLASH_ACCESS_KEY",
+            },
+            "pexels": {
+                "configured": bool(os.environ.get("PEXELS_API_KEY")),
+                "name": "Pexels",
+                "description": "免费商用图库，无版权限制，每月 25000 次请求",
+                "apply_url": "https://www.pexels.com/api/",
+                "env_key": "PEXELS_API_KEY",
+            },
+            "pixabay": {
+                "configured": bool(os.environ.get("PIXABAY_API_KEY")),
+                "name": "Pixabay",
+                "description": "CC0 授权图库，每小时 100 次免费请求",
+                "apply_url": "https://pixabay.com/api/docs/",
+                "env_key": "PIXABAY_API_KEY",
+            },
+        },
+        "note": "至少配置一个 Key 即可启用真实图片搜索，未配置时使用演示图片",
+    }
