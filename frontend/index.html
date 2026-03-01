@@ -376,6 +376,53 @@
             </div>
           </div>
 
+          <!-- 模型选择器 -->
+          <div class="bg-white rounded-xl p-5 shadow">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-bold text-gray-700">🤖 选择 AI 模型</h3>
+              <span class="text-xs text-gray-400">当前默认：{{ modelInfo.current?.name || '加载中...' }}</span>
+            </div>
+            <!-- 提供商卡片列表 -->
+            <div class="space-y-2">
+              <div v-for="(prov, key) in modelInfo.providers" :key="key"
+                @click="prov.configured ? selectModelProvider(key) : null"
+                :class="['flex items-center justify-between p-2.5 rounded-lg border-2 transition-all',
+                  !prov.configured ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed' :
+                  selectedModelProvider === key ? 'border-indigo-400 bg-indigo-50 cursor-pointer' :
+                  'border-gray-200 bg-white hover:border-indigo-200 cursor-pointer']">
+                <div class="flex items-center space-x-2">
+                  <span class="text-base">{{ {deepseek: '🐳', claude: '🟠', gemini: '🐍', groq: '⚡', qwen: '🐯', openai: '🤖'}[key] || '🤖' }}</span>
+                  <div>
+                    <div class="text-sm font-medium text-gray-800">{{ prov.name }}</div>
+                    <div class="text-xs text-gray-400">{{ prov.price_note }}</div>
+                  </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <span v-if="!prov.configured" class="text-xs text-gray-400">未配置</span>
+                  <span v-else-if="selectedModelProvider === key" class="text-xs bg-indigo-500 text-white px-2 py-0.5 rounded-full">✓ 已选</span>
+                  <span v-else class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">可用</span>
+                </div>
+              </div>
+            </div>
+            <!-- 具体子模型选择 -->
+            <div v-if="selectedModelProvider && modelInfo.providers[selectedModelProvider]" class="mt-3">
+              <label class="text-xs text-gray-500 block mb-1.5">具体子模型：</label>
+              <div class="flex flex-wrap gap-1.5">
+                <button v-for="(label, mkey) in modelInfo.providers[selectedModelProvider].models" :key="mkey"
+                  @click="selectedModelName = mkey"
+                  :class="['text-xs px-2.5 py-1 rounded-full transition-colors border',
+                    selectedModelName === mkey ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300']">
+                  {{ label }}
+                </button>
+              </div>
+            </div>
+            <!-- 清除选择按钮 -->
+            <div v-if="selectedModelProvider" class="mt-2 text-right">
+              <button @click="selectedModelProvider = ''; selectedModelName = ''"
+                class="text-xs text-gray-400 hover:text-gray-600">✕ 恢复默认模型</button>
+            </div>
+          </div>
+
           <!-- 操作按钮 -->
           <div class="bg-white rounded-xl p-5 shadow space-y-3">
             <h3 class="font-bold text-gray-700 mb-1">⚡ 快速操作</h3>
@@ -2372,6 +2419,21 @@ createApp({
     const aiConfigs = ref([]);
     const platformStyles = ref({});
     const modelInfo = ref({ current: null, providers: {} });
+    const selectedModelProvider = ref(''); // 用户选择的模型提供商
+    const selectedModelName = ref('');     // 用户选择的具体子模型
+
+    function selectModelProvider(key) {
+      if (selectedModelProvider.value === key) {
+        // 再次点击取消选择
+        selectedModelProvider.value = '';
+        selectedModelName.value = '';
+      } else {
+        selectedModelProvider.value = key;
+        // 自动选中该提供商的默认子模型
+        const prov = modelInfo.value.providers[key];
+        selectedModelName.value = prov?.default_model || '';
+      }
+    }
     const moderationEnabled = ref(false);
 
     const aiLoading = ref(false);
@@ -2811,7 +2873,13 @@ createApp({
       try {
         const data = await fetchAPI('/api/ai/titles', {
           method: 'POST',
-          body: JSON.stringify({ topic: createForm.topic, platform: createForm.platform, count: 6 }),
+          body: JSON.stringify({
+            topic: createForm.topic,
+            platform: createForm.platform,
+            count: 6,
+            model_provider: selectedModelProvider.value || null,
+            model_name: selectedModelName.value || null,
+          }),
         });
         generatedTitles.value = data.titles || [];
         showToast(`生成了 ${data.titles?.length || 0} 个标题候选`);
@@ -2827,7 +2895,12 @@ createApp({
       try {
         const data = await fetchAPI('/api/ai/outline', {
           method: 'POST',
-          body: JSON.stringify({ topic: createForm.selectedTitle, platform: createForm.platform }),
+          body: JSON.stringify({
+            topic: createForm.selectedTitle,
+            platform: createForm.platform,
+            model_provider: selectedModelProvider.value || null,
+            model_name: selectedModelName.value || null,
+          }),
         });
         generatedOutline.value = data.outline || '';
         showToast('大纲生成成功');
@@ -2853,6 +2926,8 @@ createApp({
           outline: generatedOutline.value || null,
           keywords,
           user_requirement: createForm.userRequirement || null,
+          model_provider: selectedModelProvider.value || null,
+          model_name: selectedModelName.value || null,
         });
 
         // 使用 SSE 流式接口，实现打字机效果
@@ -3616,6 +3691,7 @@ createApp({
     return {
       activeTab, tabs, stats, platforms, articles, publishTasks, recentTasks, aiConfigs, platformStyles,
       modelInfo, moderationEnabled,
+      selectedModelProvider, selectedModelName, selectModelProvider,
       aiLoading, currentAction, adaptLoading, publishing, editorMode, showPublishModal, currentArticleId,
       generatedTitles, generatedOutline, hotTopics, adaptResults, lastModerationResult,
       moderateResult, moderateLoading, moderateAction,

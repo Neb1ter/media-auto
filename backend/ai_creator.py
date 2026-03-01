@@ -72,12 +72,24 @@ MODEL_PROVIDERS = {
             "gpt-4o-mini": "GPT-4o Mini（经济版）",
         },
         "price_note": "gpt-4.1-mini 约 $0.40/1M tokens"
+    },
+    "claude": {
+        "name": "Anthropic Claude",
+        "base_url": "https://api.anthropic.com/v1",  # 官方地址，中转时会被 CLAUDE_API_BASE 覆盖
+        "env_key": "CLAUDE_API_KEY",
+        "default_model": "claude-3-5-haiku-20241022",
+        "models": {
+            "claude-3-5-haiku-20241022": "Claude 3.5 Haiku（最快最便宜）",
+            "claude-3-5-sonnet-20241022": "Claude 3.5 Sonnet（平衡推荐）",
+            "claude-opus-4-5": "Claude Opus 4.5（最强）",
+        },
+        "price_note": "Haiku $0.80/1M tokens，Sonnet $3/1M tokens，支持 API易等中转"
     }
 }
 
-# 默认优先级：DeepSeek > Gemini > Groq > 通义千问 > OpenAI
+# 默认优先级：DeepSeek > Claude > Gemini > Groq > 通义千问 > OpenAI
 # 系统会按顺序检测哪个 API Key 已配置，自动选择
-DEFAULT_PROVIDER_PRIORITY = ["deepseek", "gemini", "groq", "qwen", "openai"]
+DEFAULT_PROVIDER_PRIORITY = ["deepseek", "claude", "gemini", "groq", "qwen", "openai"]
 
 
 def detect_provider() -> Dict[str, str]:
@@ -87,10 +99,14 @@ def detect_provider() -> Dict[str, str]:
         api_key = os.environ.get(config["env_key"], "")
         if api_key and api_key.strip():
             logger.info(f"✅ 检测到 {config['name']} API Key，将使用 {config['default_model']}")
+            # Claude 支持通过 CLAUDE_API_BASE 覆盖官方地址（用于中转）
+            base_url = config["base_url"]
+            if provider_key == "claude":
+                base_url = os.environ.get("CLAUDE_API_BASE", base_url)
             return {
                 "provider": provider_key,
                 "api_key": api_key.strip(),
-                "base_url": config["base_url"],
+                "base_url": base_url,
                 "model": config["default_model"],
                 "name": config["name"]
             }

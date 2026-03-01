@@ -63,6 +63,8 @@ class GenerateTitlesRequest(BaseModel):
     topic: str
     platform: str = "general"
     count: int = 5
+    model_provider: Optional[str] = None    # 指定模型提供商
+    model_name: Optional[str] = None        # 指定具体模型
 
 class GenerateArticleRequest(BaseModel):
     title: str
@@ -70,6 +72,8 @@ class GenerateArticleRequest(BaseModel):
     outline: Optional[str] = None
     keywords: Optional[List[str]] = None
     user_requirement: Optional[str] = None   # 用户需求描述：我希望传达的内容是什么
+    model_provider: Optional[str] = None    # 指定模型提供商，如 deepseek/claude/gemini
+    model_name: Optional[str] = None        # 指定具体模型，如 claude-3-5-sonnet-20241022
 
 class ImageSearchRequest(BaseModel):
     query: str                              # 搜索关键词
@@ -123,8 +127,22 @@ class AIConfigCreate(BaseModel):
 
 # ===================== 工具函数 =====================
 
-def get_ai_creator(db: Session) -> AICreator:
-    """获取 AI 创作器（使用默认配置或环境变量）"""
+def get_ai_creator(db: Session, provider: Optional[str] = None, model: Optional[str] = None) -> AICreator:
+    """获取 AI 创作器（支持指定提供商和模型）"""
+    # 如果前端指定了提供商，直接按环境变量构建
+    if provider and provider in MODEL_PROVIDERS:
+        prov_config = MODEL_PROVIDERS[provider]
+        api_key = os.environ.get(prov_config["env_key"], "").strip()
+        if api_key:
+            base_url = prov_config["base_url"]
+            if provider == "claude":
+                base_url = os.environ.get("CLAUDE_API_BASE", base_url)
+            elif provider == "openai":
+                base_url = os.environ.get("OPENAI_BASE_URL", base_url)
+            selected_model = model or prov_config["default_model"]
+            logger.info(f"🎯 前端指定模型: {provider}/{selected_model}")
+            return AICreator(api_key=api_key, api_base=base_url, model=selected_model, provider=provider)
+    # 如果有手动配置（数据库中的默认配置）
     config = db.query(AIConfig).filter(AIConfig.is_default == True, AIConfig.is_active == True).first()
     if config:
         return AICreator(api_key=config.api_key, api_base=config.api_base, model=config.model_name)
@@ -164,7 +182,7 @@ async def health():
 async def generate_titles(req: GenerateTitlesRequest, db: Session = Depends(get_db)):
     """生成文章标题"""
     try:
-        creator = get_ai_creator(db)
+        creator = get_ai_creator(db, provider=req.model_provider, model=req.model_name)
         titles = creator.generate_titles(req.topic, req.platform, req.count)
         return {"success": True, "titles": titles, "count": len(titles)}
     except Exception as e:
@@ -175,7 +193,7 @@ async def generate_titles(req: GenerateTitlesRequest, db: Session = Depends(get_
 async def generate_outline(req: GenerateTitlesRequest, db: Session = Depends(get_db)):
     """生成文章大纲"""
     try:
-        creator = get_ai_creator(db)
+        creator = get_ai_creator(db, provider=req.model_provider, model=req.model_name)
         outline = creator.generate_outline(req.topic, req.platform)
         return {"success": True, "outline": outline}
     except Exception as e:
@@ -185,7 +203,7 @@ async def generate_outline(req: GenerateTitlesRequest, db: Session = Depends(get
 async def generate_article(req: GenerateArticleRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """生成完整文章（审核改为异步后台执行，不阻塞返回）"""
     try:
-        creator = get_ai_creator(db)
+        creator = get_ai_creator(db, provider=req.model_provider, model=req.model_name)
         result = creator.generate_article(
             req.title, req.outline, req.platform, req.keywords,
             user_requirement=req.user_requirement
@@ -245,7 +263,7 @@ async def generate_article(req: GenerateArticleRequest, background_tasks: Backgr
 async def generate_article_stream(req: GenerateArticleRequest, db: Session = Depends(get_db)):
     """流式生成文章（SSE），内容逐块返回，用户体验最好"""
     import json
-    creator = get_ai_creator(db)
+    creator = get_ai_creator(db, provider=req.model_provider, model=req.model_name)
 
     def event_stream():
         full_content = []
