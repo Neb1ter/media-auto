@@ -4,7 +4,10 @@ __pycache__/
 *.db
 *.sqlite3
 .env
-.env.*
+.env.local
+.env.*.local
+# .env.example 保留（不忽略）
+!.env.example
 *.log
 node_modules/
 .DS_Store

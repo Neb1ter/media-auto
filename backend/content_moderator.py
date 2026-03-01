@@ -22,7 +22,10 @@ from openai import OpenAI
 from loguru import logger
 
 BASE_DIR = Path(__file__).parent.parent
-DB_PATH = BASE_DIR / "db" / "media_auto.db"
+# 优先使用环境变量 DATA_DIR（Railway Volume 挂载点）
+_DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE_DIR / "db")))
+_DATA_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = _DATA_DIR / "media_auto.db"
 
 # ─── 类型定义 ──────────────────────────────────────────────────────────────────
 

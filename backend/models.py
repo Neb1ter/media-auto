@@ -8,7 +8,10 @@ from datetime import datetime
 import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(BASE_DIR, "db", "media_ops.db")
+# 优先使用环境变量 DATA_DIR（Railway Volume 挂载点），回退到项目内 db 目录
+_DATA_DIR = os.environ.get("DATA_DIR", os.path.join(BASE_DIR, "db"))
+os.makedirs(_DATA_DIR, exist_ok=True)
+DB_PATH = os.path.join(_DATA_DIR, "media_ops.db")
 
 engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

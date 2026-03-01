@@ -2,8 +2,10 @@
 FROM python:3.11-slim
 
 # 设置环境变量
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+# 默认数据目录（Railway Volume 挂载点），可通过环境变量覆盖
+ENV DATA_DIR=/data
 
 # 创建并设置工作目录
 WORKDIR /app
@@ -36,8 +38,9 @@ RUN playwright install --with-deps chromium
 # 复制项目代码
 COPY . .
 
-# 创建数据库目录
-RUN mkdir -p /app/db
+# 创建持久化数据目录（Railway Volume 会挂载到此路径）
+# 容器首次启动时若 Volume 未挂载，此目录作为回退存储
+RUN mkdir -p /data && chmod 777 /data
 
 # 暴露端口
 EXPOSE 8000
