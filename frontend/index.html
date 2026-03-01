@@ -885,7 +885,7 @@
                 <!-- 平台适配选择 -->
                 <div class="flex items-center flex-wrap gap-1.5 mt-2">
                   <span class="text-xs text-gray-500">平台尺寸：</span>
-                  <button v-for="p in ['小红书1:1','微信模16:9','抖音9:16','通用']" :key="p" @click="imagePlatform = p"
+                  <button v-for="p in ['小红书1:1','微信16:9','抖音9:16','通用']" :key="p" @click="imagePlatform = p"
                     :class="['text-xs px-2.5 py-1 rounded-full transition-colors', imagePlatform === p ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']">
                     {{ p }}
                   </button>
@@ -2163,10 +2163,11 @@
           </div>
         </div>
       </div>
-    </div>
+     </div>
   </div>
 
-    <!-- ===== AI 生图页面 ===== -->
+  <!-- ===== AI 生图页面（独立于主容器外，与其他页面同级）===== -->
+  <div class="max-w-7xl mx-auto px-4 py-6">
     <div v-if="activeTab === 'ai_image'">
       <div class="flex items-center justify-between mb-5">
         <div>
@@ -2203,7 +2204,7 @@
             <!-- 平台尺寸 -->
             <div class="mt-3">
               <div class="text-xs text-gray-500 mb-2">📱 平台尺寸</div>
-              <div class="flex flex-wrap gap-1.5">               <button v-for="p in ['小红书1:1','微信模16:9','抖音9:16','通用']" :key="p" @click="standaloneImagePlatform = p"
+              <div class="flex flex-wrap gap-1.5">               <button v-for="p in ['小红书1:1','微信16:9','抖音9:16','通用']" :key="p" @click="standaloneImagePlatform = p"
                   :class="['text-xs px-2.5 py-1 rounded-full transition-colors', standaloneImagePlatform === p ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']">
                   {{ p }}
                 </button>
@@ -2301,6 +2302,7 @@
         </div>
       </div>
     </div>
+  </div>
 
   <!-- 发布弹窗 -->
   <div v-if="showPublishModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -3073,7 +3075,7 @@ createApp({
       imageGenModel.value = '';
       imageOptimizedPrompt.value = '';
       // 平台映射
-      const platformMap = { '小红书1:1': 'xiaohongshu', '微信模16:9': 'wechat', '抖音9:16': 'douyin', '通用': '' };
+      const platformMap = { '小红书1:1': 'xiaohongshu', '微信16:9': 'wechat', '抖音9:16': 'douyin', '通用': '' };
       const platformKey = platformMap[imagePlatform.value] || '';
       try {
         const data = await fetchAPI('/api/images/generate/v2', {
@@ -3525,7 +3527,7 @@ createApp({
       standaloneImageResults.value = [];
       standaloneImageGenModel.value = '';
       standaloneOptimizedPrompt.value = '';
-      const platformMap = { '小红书1:1': 'xiaohongshu', '微信模16:9': 'wechat', '抖音9:16': 'douyin', '通用': '' };
+      const platformMap = { '小红书1:1': 'xiaohongshu', '微信16:9': 'wechat', '抖音9:16': 'douyin', '通用': '' };
       const platformKey = platformMap[standaloneImagePlatform.value] || '';
       try {
         const data = await fetchAPI('/api/images/generate/v2', {
