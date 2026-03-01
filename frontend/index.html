@@ -50,6 +50,32 @@
     /* 进度条动画 */
     @keyframes progress-fill { from { width: 0; } }
     .progress-bar { animation: progress-fill 0.8s ease-out; }
+    /* 数据分析页面 */
+    .chart-container { position: relative; width: 100%; }
+    .bar-chart-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .bar-chart-label { width: 90px; font-size: 0.75rem; color: #6b7280; text-align: right; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bar-chart-bar-wrap { flex: 1; background: #f3f4f6; border-radius: 4px; height: 22px; overflow: hidden; }
+    .bar-chart-bar { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; font-size: 0.7rem; color: white; font-weight: 600; transition: width 0.8s ease; }
+    .bar-chart-val { width: 50px; font-size: 0.75rem; color: #374151; font-weight: 600; text-align: left; flex-shrink: 0; }
+    .pie-slice { transition: opacity 0.2s; }
+    .pie-slice:hover { opacity: 0.8; }
+    .stat-card-big { text-align: center; padding: 24px; }
+    .stat-card-big .stat-num { font-size: 3rem; font-weight: 800; line-height: 1; }
+    .stat-card-big .stat-label { font-size: 0.875rem; color: #6b7280; margin-top: 8px; }
+    .sql-code { font-family: 'Courier New', monospace; font-size: 0.75rem; background: #1e293b; color: #e2e8f0; padding: 12px 16px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+    .nl-input-wrap { position: relative; }
+    .nl-input-wrap input { padding-right: 100px; }
+    .nl-send-btn { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
+    /* 图像生成优化 */
+    .img-card { position: relative; overflow: hidden; border-radius: 12px; background: #f8fafc; border: 2px solid transparent; transition: all 0.2s; cursor: pointer; }
+    .img-card:hover { border-color: #6366f1; transform: scale(1.02); }
+    .img-card.selected-img { border-color: #6366f1; }
+    .img-card .img-overlay { position: absolute; inset: 0; background: rgba(99,102,241,0.15); opacity: 0; transition: opacity 0.2s; display: flex; align-items: center; justify-content: center; }
+    .img-card:hover .img-overlay, .img-card.selected-img .img-overlay { opacity: 1; }
+    .img-source-badge { position: absolute; bottom: 6px; left: 6px; background: rgba(0,0,0,0.55); color: white; font-size: 0.6rem; padding: 2px 6px; border-radius: 4px; backdrop-filter: blur(4px); }
+    /* 查询历史 */
+    .query-history-item { cursor: pointer; padding: 8px 12px; border-radius: 8px; border: 1px solid #e5e7eb; font-size: 0.8rem; color: #374151; transition: all 0.15s; }
+    .query-history-item:hover { background: #eef2ff; border-color: #a5b4fc; color: #4f46e5; }
   </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -691,7 +717,7 @@
             <div class="flex items-center justify-between mb-3">
               <div>
                 <h3 class="font-bold text-gray-700">🖼️ 配套图片</h3>
-                <p class="text-xs text-gray-400 mt-0.5">先搜索网络图片，不满意再用 AI 生成</p>
+                <p class="text-xs text-gray-400 mt-0.5">搜索免费图片 · AI 生成（DALL-E 3 / 通义万象 / Pollinations 免费兑底）</p>
               </div>
               <div class="flex space-x-2">
                 <button @click="imageMode = 'search'"
@@ -752,43 +778,79 @@
 
             <!-- AI 生成模式 -->
             <div v-if="imageMode === 'generate'">
+              <!-- Prompt 输入 -->
               <div class="mb-3">
-                <textarea v-model="imagePrompt" rows="2"
-                  :placeholder="editor.title ? '为「' + editor.title + '」生成配套图片，描述你想要的画面风格和内容...' : '描述你想要的图片：画面内容、风格、氛围感...'" 
-                  class="w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-purple-300 outline-none"></textarea>
-                <div class="flex items-center space-x-2 mt-2">
+                <textarea v-model="imagePrompt" rows="3"
+                  :placeholder="editor.title ? '为「' + editor.title + '」生成配套图片，描述画面内容、风格、氛围感...' : '描述你想要的图片：画面内容、风格、氛围感...'" 
+                  class="w-full border rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-300 outline-none"></textarea>
+                <!-- 风格选择 -->
+                <div class="flex items-center flex-wrap gap-1.5 mt-2">
                   <span class="text-xs text-gray-500">风格：</span>
                   <button v-for="s in imageStyles" :key="s.value" @click="imageStyle = s.value"
                     :class="['text-xs px-2.5 py-1 rounded-full transition-colors', imageStyle === s.value ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']">
                     {{ s.label }}
                   </button>
                 </div>
-              </div>
-              <button @click="generateImages" :disabled="imageLoading || !imagePrompt"
-                class="w-full bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 text-white rounded-lg py-2.5 text-sm font-medium">
-                {{ imageLoading ? '✨ AI 生成中...' : '✨ 调用 AI 生成图片' }}
-              </button>
-              <!-- AI 生成结果 -->
-              <div v-if="imageResults.length > 0 && imageMode === 'generate'" class="grid grid-cols-2 gap-2 mt-3">
-                <div v-for="(img, idx) in imageResults" :key="idx"
-                  class="relative group cursor-pointer rounded-lg overflow-hidden aspect-video bg-gray-100"
-                  @click="selectImage(img)">
-                  <img :src="img.url" :alt="'AI生成图片' + (idx+1)" class="w-full h-full object-cover" loading="lazy" />
-                  <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
-                    <span class="text-white text-xs opacity-0 group-hover:opacity-100 font-medium">选择</span>
-                  </div>
-                  <div v-if="selectedImages.some(s => s.url === img.url)"
-                    class="absolute top-1 right-1 bg-purple-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
-                    ✓
-                  </div>
-                  <div class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 opacity-0 group-hover:opacity-100">
-                    {{ img.source }}
-                  </div>
+                <!-- 平台适配选择 -->
+                <div class="flex items-center flex-wrap gap-1.5 mt-2">
+                  <span class="text-xs text-gray-500">平台尺寸：</span>
+                  <button v-for="p in ['小红书1:1','微信模16:9','抖音9:16','通用']" :key="p" @click="imagePlatform = p"
+                    :class="['text-xs px-2.5 py-1 rounded-full transition-colors', imagePlatform === p ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']">
+                    {{ p }}
+                  </button>
                 </div>
               </div>
-              <div v-if="!imageResults.length && !imageLoading" class="mt-3 text-center py-4 text-gray-300 text-sm">
-                <div class="text-2xl mb-1">✨</div>
+              <!-- 生成按鈕 -->
+              <div class="flex space-x-2">
+                <button @click="generateImagesV2" :disabled="imageLoading || !imagePrompt.trim()"
+                  class="flex-1 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 disabled:from-gray-300 disabled:to-gray-300 text-white rounded-xl py-2.5 text-sm font-medium shadow-sm">
+                  {{ imageLoading ? '✨ AI 生成中...' : '✨ AI 生成图片' }}
+                </button>
+                <button v-if="editor.title" @click="imagePrompt = '为文章「' + editor.title + '」生成一张专业封面图，风格现代、简洁、商务感'"
+                  class="bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl px-3 py-2.5 text-xs">
+                  自动填入
+                </button>
+              </div>
+              <!-- 生成状态提示 -->
+              <div v-if="imageLoading" class="mt-3 text-center py-4">
+                <div class="text-2xl mb-2">✨</div>
+                <div class="text-sm text-gray-500">正在生成图片，请稍候...</div>
+                <div class="text-xs text-gray-400 mt-1">DALL-E 3 / 通义万象 / Pollinations 依次尝试</div>
+              </div>
+              <!-- AI 生成结果 -->
+              <div v-if="imageResults.length > 0 && imageMode === 'generate'" class="mt-3">
+                <!-- 模型来源标识 -->
+                <div v-if="imageGenModel" class="mb-2 flex items-center space-x-2">
+                  <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">🤖 {{ imageGenModel }}</span>
+                  <span v-if="imageOptimizedPrompt" class="text-xs text-gray-400 truncate">已优化 Prompt</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div v-for="(img, idx) in imageResults" :key="idx"
+                    :class="['img-card aspect-video', selectedImages.some(s => s.url === img.url) ? 'selected-img' : '']"
+                    @click="selectImage(img)">
+                    <img :src="img.url" :alt="'AI生成图片' + (idx+1)" class="w-full h-full object-cover" loading="lazy" />
+                    <div class="img-overlay">
+                      <div class="bg-white bg-opacity-90 rounded-full px-3 py-1 text-xs font-medium text-indigo-700">
+                        {{ selectedImages.some(s => s.url === img.url) ? '✓ 已选择' : '点击选择' }}
+                      </div>
+                    </div>
+                    <div class="img-source-badge">{{ img.source }}</div>
+                    <div v-if="selectedImages.some(s => s.url === img.url)"
+                      class="absolute top-2 right-2 bg-indigo-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow">
+                      ✓
+                    </div>
+                  </div>
+                </div>
+                <!-- 优化后的 Prompt 展示 -->
+                <div v-if="imageOptimizedPrompt" class="mt-2 p-2.5 bg-purple-50 rounded-lg">
+                  <div class="text-xs text-purple-600 font-medium mb-0.5">DeepSeek 优化后的 Prompt：</div>
+                  <div class="text-xs text-purple-700">{{ imageOptimizedPrompt }}</div>
+                </div>
+              </div>
+              <div v-if="!imageResults.length && !imageLoading" class="mt-3 text-center py-6 text-gray-300 text-sm">
+                <div class="text-3xl mb-2">✨</div>
                 <div>输入描述，调用 AI 生成独一无二的配套图片</div>
+                <div class="text-xs mt-1">无需 API Key 也可使用（Pollinations.ai 免费兑底）</div>
               </div>
             </div>
 
@@ -1514,6 +1576,268 @@
 
   </div>
 
+  <!-- ===== 数据分析（DB-GPT 风格 NL→SQL）===== -->
+  <div v-if="activeTab === 'analytics'">
+    <div class="flex items-center justify-between mb-5">
+      <div>
+        <h2 class="text-xl font-bold text-gray-800">&#x1F50D; 运营数据分析</h2>
+        <p class="text-sm text-gray-500 mt-0.5">&#x1F4AC; 用自然语言提问，自动转换为 SQL 并返回可视化结果 &mdash; 基于 DB-GPT 核心引擎</p>
+      </div>
+      <div class="flex items-center space-x-2">
+        <span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-medium">&#x1F916; DeepSeek NL&#x2192;SQL</span>
+        <span class="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-medium">&#x1F4CA; 实时查询</span>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <!-- 左侧：输入区 + 预设问题 -->
+      <div class="lg:col-span-1 space-y-4">
+        <!-- 自然语言输入框 -->
+        <div class="bg-white rounded-xl p-5 shadow">
+          <h3 class="font-bold text-gray-700 mb-3">&#x1F4AC; 输入问题</h3>
+          <div class="nl-input-wrap mb-3">
+            <input v-model="analyticsQuestion"
+              type="text"
+              placeholder="例：过去30天哪个平台的发布成功率最高？"
+              class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-300 outline-none"
+              @keyup.enter="runAnalyticsQuery" />
+            <button @click="runAnalyticsQuery"
+              :disabled="analyticsLoading || !analyticsQuestion.trim()"
+              class="nl-send-btn bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 text-white px-4 py-1.5 rounded-lg text-sm font-medium">
+              {{ analyticsLoading ? '&#x23F3;' : '&#x1F50D; 查询' }}
+            </button>
+          </div>
+          <!-- 快捷问题示例 -->
+          <div class="space-y-1.5">
+            <div class="text-xs text-gray-400 mb-2">&#x26A1; 快捷问题：</div>
+            <div v-for="q in quickQuestions" :key="q"
+              class="query-history-item"
+              @click="analyticsQuestion = q; runAnalyticsQuery()">
+              {{ q }}
+            </div>
+          </div>
+        </div>
+
+        <!-- 预设问题模板 -->
+        <div class="bg-white rounded-xl p-5 shadow">
+          <h3 class="font-bold text-gray-700 mb-3">&#x1F4CB; 常用分析模板</h3>
+          <div v-for="cat in analyticsPresets" :key="cat.category" class="mb-4">
+            <div class="text-xs font-semibold text-gray-500 mb-1.5">{{ cat.icon }} {{ cat.category }}</div>
+            <div class="space-y-1">
+              <div v-for="q in cat.questions" :key="q"
+                class="query-history-item"
+                @click="analyticsQuestion = q; runAnalyticsQuery()">
+                {{ q }}
+              </div>
+            </div>
+          </div>
+          <div v-if="analyticsPresets.length === 0" class="text-center text-gray-300 py-4 text-sm">&#x23F3; 加载中...</div>
+        </div>
+
+        <!-- 查询历史 -->
+        <div v-if="analyticsHistory.length > 0" class="bg-white rounded-xl p-5 shadow">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-bold text-gray-700">&#x1F4DC; 查询历史</h3>
+            <button @click="analyticsHistory = []" class="text-xs text-red-400 hover:text-red-600">清空</button>
+          </div>
+          <div class="space-y-1">
+            <div v-for="(h, i) in analyticsHistory.slice().reverse().slice(0, 8)" :key="i"
+              class="query-history-item"
+              @click="analyticsQuestion = h; runAnalyticsQuery()">
+              {{ h }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧：结果展示 -->
+      <div class="lg:col-span-2 space-y-4">
+        <!-- 加载中状态 -->
+        <div v-if="analyticsLoading" class="bg-white rounded-xl p-10 shadow text-center">
+          <div class="text-4xl mb-3">&#x1F9E0;</div>
+          <div class="text-gray-600 font-medium">DeepSeek 正在将自然语言转换为 SQL...</div>
+          <div class="text-sm text-gray-400 mt-1">NL &#x2192; SQL &#x2192; 执行 &#x2192; 可视化</div>
+          <div class="mt-4 flex justify-center">
+            <div class="flex space-x-1">
+              <div class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style="animation-delay:0s"></div>
+              <div class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style="animation-delay:0.15s"></div>
+              <div class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style="animation-delay:0.3s"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 空状态 -->
+        <div v-else-if="!analyticsResult" class="bg-white rounded-xl p-10 shadow text-center">
+          <div class="text-5xl mb-4">&#x1F4CA;</div>
+          <div class="text-gray-500 font-medium">DB-GPT 运营数据分析就绪</div>
+          <div class="text-sm text-gray-400 mt-2">&#x1F4AC; 在左侧输入问题，或点击预设模板快速开始</div>
+          <div class="mt-6 grid grid-cols-2 gap-3 max-w-sm mx-auto">
+            <div @click="analyticsQuestion = '过去30天哪个平台的发布成功率最高？'; runAnalyticsQuery()"
+              class="p-3 bg-indigo-50 rounded-lg cursor-pointer hover:bg-indigo-100 text-xs text-indigo-700 font-medium">
+              &#x1F4CA; 平台成功率对比
+            </div>
+            <div @click="analyticsQuestion = 'AI生成的文章和手动写的文章哪个字数更多？'; runAnalyticsQuery()"
+              class="p-3 bg-purple-50 rounded-lg cursor-pointer hover:bg-purple-100 text-xs text-purple-700 font-medium">
+              &#x270D;&#xFE0F; AI vs 手动字数
+            </div>
+            <div @click="analyticsQuestion = '最近30天每天发布数量趋势'; runAnalyticsQuery()"
+              class="p-3 bg-green-50 rounded-lg cursor-pointer hover:bg-green-100 text-xs text-green-700 font-medium">
+              &#x1F4C8; 发布趋势分析
+            </div>
+            <div @click="analyticsQuestion = '各分类文章数量分布'; runAnalyticsQuery()"
+              class="p-3 bg-orange-50 rounded-lg cursor-pointer hover:bg-orange-100 text-xs text-orange-700 font-medium">
+              &#x1F4C1; 内容分类分布
+            </div>
+          </div>
+        </div>
+
+        <!-- 错误状态 -->
+        <div v-else-if="analyticsResult && !analyticsResult.success" class="bg-white rounded-xl p-6 shadow">
+          <div class="flex items-start space-x-3 p-4 bg-red-50 rounded-xl">
+            <span class="text-2xl">&#x26A0;&#xFE0F;</span>
+            <div>
+              <div class="font-medium text-red-700">{{ analyticsResult.message }}</div>
+              <div v-if="analyticsResult.sql" class="mt-3">
+                <div class="text-xs text-gray-500 mb-1">&#x1F4DD; 尝试生成的 SQL：</div>
+                <div class="sql-code">{{ analyticsResult.sql }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 成功结果 -->
+        <div v-else-if="analyticsResult && analyticsResult.success">
+          <!-- 问题 + 元信息头部 -->
+          <div class="bg-white rounded-xl p-5 shadow">
+            <div class="flex items-start justify-between">
+              <div class="flex-1">
+                <div class="flex items-center space-x-2 mb-2">
+                  <span class="text-lg">&#x1F4AC;</span>
+                  <span class="font-bold text-gray-800">{{ analyticsResult.question }}</span>
+                  <span v-if="analyticsResult.is_mock" class="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">演示数据</span>
+                </div>
+                <div class="text-sm text-gray-500">{{ analyticsResult.explanation }}</div>
+              </div>
+              <div class="text-right ml-4 flex-shrink-0">
+                <div class="text-xs text-gray-400">&#x23F1; {{ analyticsResult.elapsed_ms }}ms</div>
+                <div class="text-xs text-gray-400 mt-0.5">{{ analyticsResult.data?.row_count }} 行数据</div>
+              </div>
+            </div>
+            <!-- SQL 展示 -->
+            <div class="mt-3">
+              <button @click="showSQL = !showSQL" class="text-xs text-indigo-500 hover:text-indigo-700 flex items-center space-x-1">
+                <span>{{ showSQL ? '&#x25BC;' : '&#x25B6;' }}</span>
+                <span>{{ showSQL ? '收起 SQL' : '查看生成的 SQL' }}</span>
+              </button>
+              <div v-if="showSQL" class="mt-2">
+                <div class="sql-code">{{ analyticsResult.sql }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 图表区域 -->
+          <div class="bg-white rounded-xl p-5 shadow">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-bold text-gray-700">{{ analyticsResult.chart?.title }}</h3>
+              <div class="flex items-center space-x-2">
+                <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                  {{ chartTypeLabel(analyticsResult.chart?.type) }}
+                </span>
+              </div>
+            </div>
+
+            <!-- stat_card: 单个数字 -->
+            <div v-if="analyticsResult.chart?.type === 'stat_card'" class="stat-card-big">
+              <div class="stat-num text-indigo-600">{{ analyticsResult.chart?.values?.[0] }}</div>
+              <div class="stat-label">{{ analyticsResult.chart?.labels?.[0] || analyticsResult.chart?.title }}</div>
+            </div>
+
+            <!-- bar: 柱状图 -->
+            <div v-else-if="analyticsResult.chart?.type === 'bar' || analyticsResult.chart?.type === 'bar_grouped'" class="chart-container">
+              <div v-for="(label, i) in analyticsResult.chart?.labels" :key="i" class="bar-chart-row">
+                <div class="bar-chart-label" :title="label">{{ label }}</div>
+                <div class="bar-chart-bar-wrap">
+                  <div class="bar-chart-bar"
+                    :style="{ width: barWidth(analyticsResult.chart?.values, i) + '%', background: barColor(i) }">
+                    <span v-if="barWidth(analyticsResult.chart?.values, i) > 20">{{ analyticsResult.chart?.values?.[i] }}</span>
+                  </div>
+                </div>
+                <div class="bar-chart-val">{{ analyticsResult.chart?.values?.[i] }}</div>
+              </div>
+            </div>
+
+            <!-- pie: 饼图 -->
+            <div v-else-if="analyticsResult.chart?.type === 'pie'" class="flex items-center justify-center space-x-8">
+              <svg width="180" height="180" viewBox="0 0 180 180">
+                <g transform="translate(90,90)">
+                  <path v-for="(slice, i) in pieSlices(analyticsResult.chart?.labels, analyticsResult.chart?.values)" :key="i"
+                    :d="slice.d" :fill="barColor(i)" class="pie-slice"
+                    @mouseover="pieHover = i" @mouseleave="pieHover = -1"
+                    :opacity="pieHover === i ? 0.85 : 1">
+                    <title>{{ slice.label }}: {{ slice.value }}</title>
+                  </path>
+                </g>
+              </svg>
+              <div class="space-y-2">
+                <div v-for="(label, i) in analyticsResult.chart?.labels" :key="i" class="flex items-center space-x-2">
+                  <div class="w-3 h-3 rounded-sm flex-shrink-0" :style="{ background: barColor(i) }"></div>
+                  <div class="text-sm text-gray-700">{{ label }}</div>
+                  <div class="text-sm font-bold text-gray-800">{{ analyticsResult.chart?.values?.[i] }}</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- line: 折线图 -->
+            <div v-else-if="analyticsResult.chart?.type === 'line'" class="chart-container">
+              <svg :width="lineChartWidth" height="160" class="w-full">
+                <polyline
+                  :points="linePoints(analyticsResult.chart?.labels, analyticsResult.chart?.values)"
+                  fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linejoin="round" />
+                <circle v-for="(pt, i) in linePointsArr(analyticsResult.chart?.labels, analyticsResult.chart?.values)" :key="i"
+                  :cx="pt.x" :cy="pt.y" r="4" fill="#6366f1">
+                  <title>{{ analyticsResult.chart?.labels?.[i] }}: {{ analyticsResult.chart?.values?.[i] }}</title>
+                </circle>
+              </svg>
+              <div class="flex justify-between text-xs text-gray-400 mt-1 px-1">
+                <span>{{ analyticsResult.chart?.labels?.[0] }}</span>
+                <span>{{ analyticsResult.chart?.labels?.[analyticsResult.chart?.labels?.length - 1] }}</span>
+              </div>
+            </div>
+
+            <!-- table: 表格 -->
+            <div v-else class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b">
+                    <th v-for="col in analyticsResult.data?.columns" :key="col"
+                      class="text-left py-2 px-3 text-gray-500 font-medium text-xs">{{ col }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row, i) in analyticsResult.data?.rows" :key="i"
+                    class="border-b border-gray-50 hover:bg-gray-50">
+                    <td v-for="(cell, j) in row" :key="j" class="py-2 px-3 text-gray-700">{{ cell }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 洞察提示 -->
+          <div v-if="analyticsResult.insight" class="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
+            <div class="flex items-start space-x-2">
+              <span class="text-lg">&#x1F4A1;</span>
+              <div>
+                <div class="text-sm font-medium text-indigo-800">AI 洞察</div>
+                <div class="text-sm text-indigo-700 mt-0.5">{{ analyticsResult.insight }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 发布弹窗 -->
   <div v-if="showPublishModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
     <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
@@ -1660,6 +1984,7 @@ createApp({
       { key: 'moderate', label: '内容审核', icon: '🛡️' },
       { key: 'publish', label: '发布管理', icon: '🌐' },
       { key: 'settings', label: '设置', icon: '⚙️' },
+      { key: 'analytics', label: '数据分析', icon: '🔍' },
     ];
 
     const stats = ref({});
@@ -1989,14 +2314,17 @@ createApp({
     }
 
     // 图片功能状态
-    const imageMode = ref('search');        // 'search' | 'generate'
+    const imageMode = ref('search');
     const imageQuery = ref('');
     const imagePrompt = ref('');
     const imageStyle = ref('realistic');
+    const imagePlatform = ref('通用');
     const imageResults = ref([]);
     const selectedImages = ref([]);
     const imageLoading = ref(false);
     const imageSearchDone = ref(false);
+    const imageGenModel = ref('');
+    const imageOptimizedPrompt = ref('');
     const imageStyles = [
       { value: 'realistic', label: '写实摄影' },
       { value: 'illustration', label: '插画风格' },
@@ -2285,6 +2613,43 @@ createApp({
       }
     }
 
+    // AI 生成图片 V2（使用增强版 API，支持 Prompt 优化 + 平台适配）
+    async function generateImagesV2() {
+      if (!imagePrompt.value.trim()) return;
+      imageLoading.value = true;
+      imageResults.value = [];
+      imageGenModel.value = '';
+      imageOptimizedPrompt.value = '';
+      // 平台映射
+      const platformMap = { '小红书1:1': 'xiaohongshu', '微信模16:9': 'wechat', '抖音9:16': 'douyin', '通用': '' };
+      const platformKey = platformMap[imagePlatform.value] || '';
+      try {
+        const data = await fetchAPI('/api/images/generate/v2', {
+          method: 'POST',
+          body: JSON.stringify({
+            prompt: imagePrompt.value,
+            style: imageStyle.value,
+            count: 4,
+            article_title: editor.title || null,
+            platform: platformKey || null,
+          }),
+        });
+        if (data.success) {
+          imageResults.value = data.images || [];
+          imageGenModel.value = data.model || '';
+          imageOptimizedPrompt.value = data.optimized_prompt || '';
+          const note = data.note ? ` · ${data.note}` : '';
+          showToast(`生成成功：${data.images?.length || 0} 张（${data.model}${note}）`);
+        } else {
+          showToast(data.message || '生成失败', 'error');
+        }
+      } catch (e) {
+        showToast('AI 生成失败：' + e.message, 'error');
+      } finally {
+        imageLoading.value = false;
+      }
+    }
+
     // 选择/取消选择图片
     function selectImage(img) {
       const idx = selectedImages.value.findIndex(s => s.url === img.url);
@@ -2527,9 +2892,117 @@ createApp({
       return names[platform] || platform;
     }
 
+    // ===================== 数据分析（DB-GPT NL→SQL）=====================
+    const analyticsQuestion = ref('');
+    const analyticsLoading = ref(false);
+    const analyticsResult = ref(null);
+    const analyticsPresets = ref([]);
+    const analyticsHistory = ref([]);
+    const showSQL = ref(false);
+    const pieHover = ref(-1);
+    const lineChartWidth = ref(600);
+    const quickQuestions = [
+      '过去30天哪个平台的发布成功率最高？',
+      'AI生成的文章和手动写的文章哪个字数更多？',
+      '各平台累计发布文章数量分布',
+    ];
+    const CHART_COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16'];
+
+    async function loadAnalyticsPresets() {
+      try {
+        const data = await fetchAPI('/api/analytics/presets');
+        analyticsPresets.value = data.presets || [];
+      } catch (e) {
+        console.error('加载预设问题失败', e);
+      }
+    }
+
+    async function runAnalyticsQuery() {
+      const q = analyticsQuestion.value.trim();
+      if (!q || analyticsLoading.value) return;
+      analyticsLoading.value = true;
+      analyticsResult.value = null;
+      showSQL.value = false;
+      // 记录历史
+      if (!analyticsHistory.value.includes(q)) {
+        analyticsHistory.value.push(q);
+        if (analyticsHistory.value.length > 20) analyticsHistory.value.shift();
+      }
+      try {
+        const data = await fetchAPI('/api/analytics/query', {
+          method: 'POST',
+          body: JSON.stringify({ question: q }),
+        });
+        analyticsResult.value = data;
+        if (!data.success) showToast(data.message || '查询失败', 'error');
+      } catch (e) {
+        analyticsResult.value = { success: false, question: q, message: '请求失败：' + e.message };
+        showToast('查询失败：' + e.message, 'error');
+      } finally {
+        analyticsLoading.value = false;
+      }
+    }
+
+    function chartTypeLabel(type) {
+      const map = { bar: '柱状图', line: '折线图', pie: '饼图', table: '表格', stat_card: '指标卡片', bar_grouped: '分组柱状图' };
+      return map[type] || '表格';
+    }
+
+    function barColor(i) {
+      return CHART_COLORS[i % CHART_COLORS.length];
+    }
+
+    function barWidth(values, i) {
+      if (!values || values.length === 0) return 0;
+      const max = Math.max(...values.map(v => parseFloat(v) || 0));
+      if (max === 0) return 0;
+      return Math.round((parseFloat(values[i]) || 0) / max * 100);
+    }
+
+    function pieSlices(labels, values) {
+      if (!labels || !values || labels.length === 0) return [];
+      const total = values.reduce((s, v) => s + (parseFloat(v) || 0), 0);
+      if (total === 0) return [];
+      let angle = 0;
+      const R = 80;
+      return labels.map((label, i) => {
+        const val = parseFloat(values[i]) || 0;
+        const frac = val / total;
+        const startAngle = angle;
+        angle += frac * 2 * Math.PI;
+        const endAngle = angle;
+        const x1 = R * Math.sin(startAngle);
+        const y1 = -R * Math.cos(startAngle);
+        const x2 = R * Math.sin(endAngle);
+        const y2 = -R * Math.cos(endAngle);
+        const large = frac > 0.5 ? 1 : 0;
+        const d = frac >= 0.9999
+          ? `M 0 0 L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${R} ${R} 0 1 1 ${(x2 - 0.01).toFixed(2)} ${y2.toFixed(2)} Z`
+          : `M 0 0 L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${R} ${R} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z`;
+        return { d, label, value: val };
+      });
+    }
+
+    function linePointsArr(labels, values) {
+      if (!labels || !values || labels.length < 2) return [];
+      const W = 560; const H = 140; const PAD = 20;
+      const max = Math.max(...values.map(v => parseFloat(v) || 0));
+      const min = Math.min(...values.map(v => parseFloat(v) || 0));
+      const range = max - min || 1;
+      return labels.map((_, i) => ({
+        x: PAD + (i / (labels.length - 1)) * (W - PAD * 2),
+        y: H - PAD - ((parseFloat(values[i]) || 0) - min) / range * (H - PAD * 2),
+      }));
+    }
+
+    function linePoints(labels, values) {
+      return linePointsArr(labels, values).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    }
+
     onMounted(async () => {
       loadMemories(); // 优先加载本地记忆（无需网络）
       await Promise.all([loadDashboard(), loadArticles(), loadAIConfigs(), loadPlatformStyles(), loadModelInfo()]);
+      loadAnalyticsPresets();
     });
 
     return {
@@ -2548,9 +3021,9 @@ createApp({
       renderMarkdown, formatDate, statusLabel, getPlatformIcon, getPlatformName,
       loadPublishTasks, loadArticles,
       // 图片功能
-      imageMode, imageQuery, imagePrompt, imageStyle, imageResults, selectedImages,
-      imageLoading, imageSearchDone, imageStyles,
-      searchImages, generateImages, selectImage,
+      imageMode, imageQuery, imagePrompt, imageStyle, imagePlatform, imageResults, selectedImages,
+      imageLoading, imageSearchDone, imageStyles, imageGenModel, imageOptimizedPrompt,
+      searchImages, generateImages, generateImagesV2, selectImage,
       // 文章预览
       showPreviewModal, previewLoading, previewData,
       previewArticle, editFromPreview, publishFromPreview,
@@ -2567,6 +3040,11 @@ createApp({
       moderationFixLoading, moderationFixApplied, autoFixByModeration, revertModerationFix,
       // 选题助手
       topicForm, topicResult, topicLoading, getTopicSuggestions, useTopicTitle,
+      // 数据分析
+      analyticsQuestion, analyticsLoading, analyticsResult, analyticsPresets,
+      analyticsHistory, showSQL, pieHover, lineChartWidth, quickQuestions,
+      runAnalyticsQuery, chartTypeLabel, barColor, barWidth, pieSlices,
+      linePoints, linePointsArr,
     };
   },
 
@@ -2574,9 +3052,9 @@ createApp({
     activeTab(tab) {
       if (tab === 'articles') this.loadArticles();
       if (tab === 'publish') this.loadPublishTasks();
+      if (tab === 'analytics') this.loadAnalyticsPresets();
     }
   },
-
   methods: {
     async loadDashboard() {}
   }

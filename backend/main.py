@@ -1041,3 +1041,235 @@ async def get_topic_suggestions(req: TopicSuggestionRequest, db: Session = Depen
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
+
+
+# ===================== 自然语言查询（NL → SQL）=====================
+from nl_query import NLQueryEngine, PRESET_QUESTIONS
+
+class NLQueryRequest(BaseModel):
+    question: str
+    use_mock: bool = False   # 强制使用演示数据（用于前端预览）
+
+_nl_engine: Optional[NLQueryEngine] = None
+
+def get_nl_engine(db: Session) -> NLQueryEngine:
+    global _nl_engine
+    if _nl_engine is None:
+        config = db.query(AIConfig).filter(AIConfig.is_default == True, AIConfig.is_active == True).first()
+        if config:
+            _nl_engine = NLQueryEngine(api_key=config.api_key, api_base=config.api_base, model=config.model_name)
+        else:
+            _nl_engine = NLQueryEngine()
+    return _nl_engine
+
+@app.post("/api/analytics/query")
+async def nl_query(req: NLQueryRequest, db: Session = Depends(get_db)):
+    """
+    自然语言查询运营数据
+    输入：自然语言问题
+    输出：SQL、数据表格、图表配置
+    """
+    if not req.question.strip():
+        raise HTTPException(status_code=400, detail="问题不能为空")
+    try:
+        engine = get_nl_engine(db)
+        result = engine.query(req.question.strip(), use_mock=req.use_mock)
+        return result
+    except Exception as e:
+        logger.error(f"NL 查询失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/analytics/presets")
+async def get_preset_questions():
+    """获取预设问题模板"""
+    return {"presets": PRESET_QUESTIONS}
+
+@app.get("/api/analytics/db-schema")
+async def get_db_schema():
+    """获取数据库表结构（用于前端展示）"""
+    from nl_query import DB_SCHEMA
+    return {"schema": DB_SCHEMA}
+
+
+# ===================== 图像生成增强（接入 DeepSeek + Pollinations）=====================
+
+class ImageGenerateV2Request(BaseModel):
+    prompt: str
+    style: str = "realistic"
+    count: int = 2
+    article_title: Optional[str] = None   # 可选：根据文章标题自动优化 prompt
+    platform: Optional[str] = None        # 可选：根据平台优化图片尺寸和风格
+
+@app.post("/api/images/generate/v2")
+async def generate_image_v2(req: ImageGenerateV2Request, db: Session = Depends(get_db)):
+    """
+    增强版图像生成接口
+    1. 若提供 article_title，先用 AI 优化 prompt
+    2. 优先使用 DALL-E 3（OpenAI）
+    3. 备选：通义万象（DashScope）
+    4. 兜底：Pollinations.ai（免费，无需 API Key）
+    """
+    import httpx
+
+    final_prompt = req.prompt.strip()
+
+    # Step 1: AI 优化 prompt（若提供文章标题）
+    if req.article_title and not final_prompt:
+        try:
+            creator = get_ai_creator(db)
+            platform_style_hint = {
+                "xiaohongshu": "小红书风格，明亮清新，有生活感，适合种草",
+                "wechat": "微信公众号风格，简洁专业，信息清晰",
+                "zhihu": "知乎风格，专业严肃，数据可视化风格",
+                "toutiao": "今日头条风格，吸引眼球，有冲击力",
+                "bilibili": "B站风格，年轻活力，有趣生动",
+                "weibo": "微博风格，热点感强，视觉冲击",
+                "douyin": "抖音风格，极简有力，视觉冲击强",
+            }.get(req.platform or "", "通用自媒体风格，专业美观")
+
+            optimize_prompt = f"""请为以下文章生成一段英文图片描述（用于 AI 图像生成），要求：
+1. 描述要具体，包含主题、场景、色调、风格
+2. 风格要求：{platform_style_hint}
+3. 图片类型：文章配图/封面图
+4. 只输出英文描述，不要任何解释，长度 50-100 词
+
+文章标题：{req.article_title}"""
+            final_prompt = creator._chat(
+                [{"role": "user", "content": optimize_prompt}],
+                temperature=0.7, max_tokens=200
+            )
+            logger.info(f"AI 优化后的 prompt: {final_prompt}")
+        except Exception as e:
+            logger.warning(f"Prompt 优化失败，使用原始标题: {e}")
+            final_prompt = req.article_title
+
+    if not final_prompt:
+        raise HTTPException(status_code=400, detail="请提供图片描述或文章标题")
+
+    style_prompts = {
+        "realistic": "photorealistic, high quality, 8k, professional photography, sharp focus",
+        "illustration": "digital illustration, flat design, colorful, modern, clean lines",
+        "anime": "anime style, manga, vibrant colors, detailed, Studio Ghibli inspired",
+        "flat": "flat design, minimal, clean, vector style, geometric shapes",
+        "cinematic": "cinematic, dramatic lighting, film grain, wide angle, epic",
+    }
+    style_suffix = style_prompts.get(req.style, style_prompts["realistic"])
+    full_prompt = f"{final_prompt}, {style_suffix}"
+
+    # 平台尺寸映射
+    platform_sizes = {
+        "xiaohongshu": "1024x1024",   # 正方形
+        "wechat": "1792x1024",         # 横版
+        "zhihu": "1792x1024",
+        "toutiao": "1792x1024",
+        "bilibili": "1792x1024",
+        "weibo": "1024x1024",
+        "douyin": "1024x1792",         # 竖版
+    }
+    image_size = platform_sizes.get(req.platform or "", "1792x1024")
+
+    # ── 方案 1：DALL-E 3（OpenAI）─────────────────────────────────────────
+    openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if openai_key:
+        try:
+            from openai import OpenAI as OAI
+            client = OAI(api_key=openai_key, base_url="https://api.openai.com/v1")
+            images = []
+            for _ in range(min(req.count, 4)):
+                r = client.images.generate(
+                    model="dall-e-3",
+                    prompt=full_prompt,
+                    n=1,
+                    size=image_size,
+                    quality="standard",
+                )
+                images.append({
+                    "url": r.data[0].url,
+                    "source": "DALL-E 3",
+                    "revised_prompt": r.data[0].revised_prompt,
+                    "optimized_prompt": final_prompt,
+                })
+            return {
+                "success": True,
+                "images": images,
+                "model": "DALL-E 3",
+                "prompt_used": full_prompt,
+                "optimized_prompt": final_prompt,
+            }
+        except Exception as e:
+            logger.warning(f"DALL-E 3 失败: {e}")
+
+    # ── 方案 2：通义万象（DashScope）────────────────────────────────────────
+    dashscope_key = os.environ.get("DASHSCOPE_API_KEY", "").strip()
+    if dashscope_key:
+        try:
+            async with httpx.AsyncClient(timeout=90) as client:
+                resp = await client.post(
+                    "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+                    headers={"Authorization": f"Bearer {dashscope_key}", "X-DashScope-Async": "enable"},
+                    json={
+                        "model": "wanx2.1-t2i-turbo",
+                        "input": {"prompt": req.prompt},
+                        "parameters": {"size": "1440*960", "n": min(req.count, 4)}
+                    }
+                )
+                if resp.status_code == 200:
+                    task_id = resp.json()["output"]["task_id"]
+                    for _ in range(18):
+                        await asyncio.sleep(5)
+                        poll = await client.get(
+                            f"https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}",
+                            headers={"Authorization": f"Bearer {dashscope_key}"}
+                        )
+                        output = poll.json().get("output", {})
+                        if output.get("task_status") == "SUCCEEDED":
+                            images = [
+                                {"url": r["url"], "source": "通义万象", "optimized_prompt": final_prompt}
+                                for r in output.get("results", [])
+                            ]
+                            return {
+                                "success": True,
+                                "images": images,
+                                "model": "通义万象 Wanx2.1",
+                                "prompt_used": req.prompt,
+                                "optimized_prompt": final_prompt,
+                            }
+                        elif output.get("task_status") in ("FAILED", "CANCELED"):
+                            break
+        except Exception as e:
+            logger.warning(f"通义万象失败: {e}")
+
+    # ── 方案 3：Pollinations.ai（免费，无需 API Key）────────────────────────
+    try:
+        import urllib.parse
+        encoded = urllib.parse.quote(full_prompt)
+        images = []
+        seeds = [42, 123, 456, 789]
+        for i in range(min(req.count, 4)):
+            seed = seeds[i % len(seeds)]
+            w, h = (1792, 1024) if "x" not in image_size else (
+                int(image_size.split("x")[0]), int(image_size.split("x")[1])
+            )
+            url = f"https://image.pollinations.ai/prompt/{encoded}?width={w}&height={h}&seed={seed}&nologo=true&enhance=true"
+            images.append({
+                "url": url,
+                "source": "Pollinations.ai（免费）",
+                "optimized_prompt": final_prompt,
+            })
+        return {
+            "success": True,
+            "images": images,
+            "model": "Pollinations.ai",
+            "prompt_used": full_prompt,
+            "optimized_prompt": final_prompt,
+            "note": "当前使用免费图像服务（Pollinations.ai），配置 OPENAI_API_KEY 可升级为 DALL-E 3",
+        }
+    except Exception as e:
+        logger.error(f"Pollinations 失败: {e}")
+
+    return {
+        "success": False,
+        "images": [],
+        "message": "所有图像生成方案均失败，请检查网络连接或配置 API Key",
+    }
+
