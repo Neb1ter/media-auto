@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>自媒体运营自动化平台</title>
+  <script src="/assets/tailwind.cdn.js"></script>
+  <script src="/assets/vue.global.js"></script>
+  <script src="/assets/marked.min.js"></script>
+  <style>
+    [v-cloak] { display: none; }
+    .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .card-hover { transition: all 0.2s ease; }
+    .card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.15); }
+    .prose-content { line-height: 1.8; }
+    .prose-content h1, .prose-content h2, .prose-content h3 { font-weight: bold; margin: 1em 0 0.5em; }
+    .prose-content h1 { font-size: 1.5em; }
+    .prose-content h2 { font-size: 1.3em; }
+    .prose-content p { margin: 0.5em 0; }
+    .prose-content ul, .prose-content ol { padding-left: 1.5em; margin: 0.5em 0; }
+    .loading-dots::after { content: ''; animation: dots 1.5s infinite; }
+    @keyframes dots { 0%,20%{content:'.'} 40%{content:'..'} 60%,100%{content:'...'} }
+    .status-badge { padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+    .status-success { background: #d1fae5; color: #065f46; }
+    .status-failed { background: #fee2e2; color: #991b1b; }
+    .status-pending { background: #fef3c7; color: #92400e; }
+    .status-draft { background: #e5e7eb; color: #374151; }
+    .status-published { background: #dbeafe; color: #1e40af; }
+    textarea { resize: vertical; }
+    .platform-card { cursor: pointer; border: 2px solid transparent; transition: all 0.2s; }
+    .platform-card.selected { border-color: #6366f1; background: #eef2ff; }
+    .platform-card:hover { border-color: #a5b4fc; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen" v-cloak>
+<div id="app">
+  <!-- 顶部导航 -->
+  <nav class="gradient-bg text-white shadow-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <span class="text-2xl">🚀</span>
+        <div>
+          <h1 class="text-lg font-bold leading-tight">自媒体运营自动化平台</h1>
+          <p class="text-xs text-purple-200">AI 驱动 · 多平台 · 高效运营</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2">
+        <span class="text-xs bg-white bg-opacity-20 px-3 py-1 rounded-full">
+          {{ stats.articles?.total || 0 }} 篇文章
+        </span>
+        <span class="text-xs bg-white bg-opacity-20 px-3 py-1 rounded-full">
+          {{ stats.publish_tasks?.success || 0 }} 次发布
+        </span>
+      </div>
+    </div>
+    <!-- 标签页 -->
+    <div class="max-w-7xl mx-auto px-4 flex space-x-1 pb-2">
+      <button v-for="tab in tabs" :key="tab.key"
+        @click="activeTab = tab.key"
+        :class="['px-4 py-1.5 rounded-t text-sm font-medium transition-colors',
+          activeTab === tab.key ? 'bg-white text-purple-700' : 'text-purple-200 hover:text-white hover:bg-white hover:bg-opacity-10']">
+        {{ tab.icon }} {{ tab.label }}
+      </button>
+    </div>
+  </nav>
+
+  <div class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- ===== 仪表盘 ===== -->
+    <div v-if="activeTab === 'dashboard'">
+      <h2 class="text-xl font-bold text-gray-800 mb-4">📊 运营看板</h2>
+      <!-- 统计卡片 -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-white rounded-xl p-4 shadow card-hover">
+          <div class="text-3xl font-bold text-indigo-600">{{ stats.articles?.total || 0 }}</div>
+          <div class="text-sm text-gray-500 mt-1">📝 文章总数</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow card-hover">
+          <div class="text-3xl font-bold text-green-600">{{ stats.articles?.published || 0 }}</div>
+          <div class="text-sm text-gray-500 mt-1">✅ 已发布</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow card-hover">
+          <div class="text-3xl font-bold text-purple-600">{{ stats.articles?.ai_generated || 0 }}</div>
+          <div class="text-sm text-gray-500 mt-1">🤖 AI 创作</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow card-hover">
+          <div class="text-3xl font-bold text-orange-600">{{ stats.publish_tasks?.success_rate || 0 }}%</div>
+          <div class="text-sm text-gray-500 mt-1">📈 发布成功率</div>
+        </div>
+      </div>
+
+      <!-- 平台状态 -->
+      <div class="bg-white rounded-xl p-5 shadow mb-6">
+        <h3 class="font-bold text-gray-700 mb-4">🌐 平台账号状态</h3>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div v-for="p in platforms" :key="p.platform"
+            class="flex items-center justify-between p-3 rounded-lg border">
+            <div class="flex items-center space-x-2">
+              <span class="text-xl">{{ p.icon }}</span>
+              <div>
+                <div class="font-medium text-sm">{{ p.name }}</div>
+                <div class="text-xs text-gray-400">{{ p.type }}</div>
+              </div>
+            </div>
+            <div>
+              <span v-if="p.logged_in" class="status-badge status-success">已登录</span>
+              <span v-else class="status-badge status-draft">未登录</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 最近发布任务 -->
+      <div class="bg-white rounded-xl p-5 shadow">
+        <h3 class="font-bold text-gray-700 mb-4">📋 最近发布记录</h3>
+        <div v-if="recentTasks.length === 0" class="text-center text-gray-400 py-8">
+          暂无发布记录，去创作并发布您的第一篇文章吧！
+        </div>
+        <div v-else class="space-y-2">
+          <div v-for="task in recentTasks.slice(0,8)" :key="task.id"
+            class="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+            <div class="flex items-center space-x-3">
+              <span class="text-lg">{{ getPlatformIcon(task.platform) }}</span>
+              <div>
+                <div class="text-sm font-medium">{{ task.platform_name }}</div>
+                <div class="text-xs text-gray-400">{{ formatDate(task.created_at) }}</div>
+              </div>
+            </div>
+            <span :class="['status-badge', 'status-' + task.status]">
+              {{ statusLabel(task.status) }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== AI 创作 ===== -->
+    <div v-if="activeTab === 'create'">
+      <h2 class="text-xl font-bold text-gray-800 mb-4">✍️ AI 智能创作</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- 左侧：创作控制 -->
+        <div class="space-y-4">
+          <!-- 选择目标平台 -->
+          <div class="bg-white rounded-xl p-5 shadow">
+            <h3 class="font-bold text-gray-700 mb-3">🎯 目标平台风格</h3>
+            <div class="grid grid-cols-3 gap-2">
+              <div v-for="(style, key) in platformStyles" :key="key"
+                @click="createForm.platform = key"
+                :class="['platform-card rounded-lg p-2 text-center text-sm',
+                  createForm.platform === key ? 'selected' : 'bg-gray-50']">
+                <div class="font-medium">{{ style.name }}</div>
+                <div class="text-xs text-gray-400 mt-0.5 truncate">{{ style.max_length }}字</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 主题输入 -->
+          <div class="bg-white rounded-xl p-5 shadow">
+            <h3 class="font-bold text-gray-700 mb-3">💡 创作主题</h3>
+            <textarea v-model="createForm.topic" rows="2"
+              placeholder="输入文章主题，如：人工智能对未来工作的影响..."
+              class="w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none"></textarea>
+            <input v-model="createForm.keywords" type="text"
+              placeholder="关键词（逗号分隔，可选）"
+              class="w-full border rounded-lg p-2 text-sm mt-2 focus:ring-2 focus:ring-indigo-300 outline-none" />
+          </div>
+
+          <!-- 操作按钮 -->
+          <div class="bg-white rounded-xl p-5 shadow space-y-3">
+            <h3 class="font-bold text-gray-700 mb-1">⚡ 快速操作</h3>
+            <button @click="generateTitles"
+              :disabled="!createForm.topic || aiLoading"
+              class="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
+              {{ aiLoading && currentAction === 'titles' ? '⏳ 生成中...' : '🏷️ 生成标题候选' }}
+            </button>
+            <button @click="generateOutline"
+              :disabled="!createForm.selectedTitle || aiLoading"
+              class="w-full bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
+              {{ aiLoading && currentAction === 'outline' ? '⏳ 生成中...' : '📋 生成文章大纲' }}
+            </button>
+            <button @click="generateFullArticle"
+              :disabled="!createForm.selectedTitle || aiLoading"
+              class="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
+              {{ aiLoading && currentAction === 'article' ? '⏳ 生成中...' : '✨ 一键生成完整文章' }}
+            </button>
+            <button @click="getHotTopics"
+              :disabled="aiLoading"
+              class="w-full bg-orange-400 hover:bg-orange-500 disabled:bg-gray-300 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
+              {{ aiLoading && currentAction === 'hot' ? '⏳ 获取中...' : '🔥 获取热门话题' }}
+            </button>
+          </div>
+
+          <!-- 标题候选 -->
+          <div v-if="generatedTitles.length > 0" class="bg-white rounded-xl p-5 shadow">
+            <h3 class="font-bold text-gray-700 mb-3">🏷️ 标题候选（点击选择）</h3>
+            <div class="space-y-2">
+              <div v-for="(title, idx) in generatedTitles" :key="idx"
+                @click="selectTitle(title)"
+                :class="['p-2.5 rounded-lg text-sm cursor-pointer transition-colors',
+                  createForm.selectedTitle === title ? 'bg-indigo-100 border border-indigo-300 text-indigo-800' : 'bg-gray-50 hover:bg-gray-100']">
+                {{ title }}
+              </div>
+            </div>
+          </div>
+
+          <!-- 热门话题 -->
+          <div v-if="hotTopics.length > 0" class="bg-white rounded-xl p-5 shadow">
+            <h3 class="font-bold text-gray-700 mb-3">🔥 热门话题（点击使用）</h3>
+            <div class="space-y-2">
+              <div v-for="(topic, idx) in hotTopics" :key="idx"
+                @click="createForm.topic = topic.title; createForm.selectedTitle = topic.title"
+                class="p-2.5 rounded-lg text-sm cursor-pointer bg-orange-50 hover:bg-orange-100 transition-colors">
+                <div class="font-medium text-orange-800">{{ topic.title }}</div>
+                <div class="text-xs text-gray-500 mt-0.5">{{ topic.description }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧：文章编辑器 -->
+        <div class="space-y-4">
+          <div class="bg-white rounded-xl p-5 shadow">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-bold text-gray-700">📝 文章编辑器</h3>
+              <div class="flex space-x-2">
+                <button @click="editorMode = 'edit'"
+                  :class="['text-xs px-3 py-1 rounded', editorMode === 'edit' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-100']">
+                  编辑
+                </button>
+                <button @click="editorMode = 'preview'"
+                  :class="['text-xs px-3 py-1 rounded', editorMode === 'preview' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-100']">
+                  预览
+                </button>
+              </div>
+            </div>
+            <input v-model="editor.title" type="text" placeholder="文章标题..."
+              class="w-full border rounded-lg p-3 text-base font-bold mb-3 focus:ring-2 focus:ring-indigo-300 outline-none" />
+            <div v-if="editorMode === 'edit'">
+              <textarea v-model="editor.content" rows="18"
+                placeholder="文章内容（支持 Markdown）..."
+                class="w-full border rounded-lg p-3 text-sm font-mono focus:ring-2 focus:ring-indigo-300 outline-none"></textarea>
+            </div>
+            <div v-else class="border rounded-lg p-4 min-h-64 prose-content text-sm bg-gray-50 overflow-auto max-h-96"
+              v-html="renderMarkdown(editor.content)"></div>
+            <div class="flex items-center justify-between mt-3 text-xs text-gray-400">
+              <span>字数：{{ editor.content.length }}</span>
+              <div class="flex space-x-2">
+                <button @click="saveArticle"
+                  :disabled="!editor.title || !editor.content"
+                  class="bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 px-4 py-1.5 rounded text-sm font-medium">
+                  💾 保存草稿
+                </button>
+                <button @click="openPublishModal"
+                  :disabled="!editor.title || !editor.content"
+                  class="bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white px-4 py-1.5 rounded text-sm font-medium">
+                  🚀 发布文章
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 大纲 -->
+          <div v-if="generatedOutline" class="bg-white rounded-xl p-5 shadow">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="font-bold text-gray-700">📋 文章大纲</h3>
+              <button @click="editor.content = generatedOutline"
+                class="text-xs text-indigo-600 hover:text-indigo-800">
+                → 填入编辑器
+              </button>
+            </div>
+            <pre class="text-xs text-gray-600 whitespace-pre-wrap bg-gray-50 p-3 rounded">{{ generatedOutline }}</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 文章管理 ===== -->
+    <div v-if="activeTab === 'articles'">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold text-gray-800">📚 文章管理</h2>
+        <button @click="activeTab = 'create'"
+          class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium">
+          + 新建文章
+        </button>
+      </div>
+      <div class="bg-white rounded-xl shadow overflow-hidden">
+        <div v-if="articles.length === 0" class="text-center text-gray-400 py-16">
+          <div class="text-4xl mb-3">📝</div>
+          <div>暂无文章，去 AI 创作页面创建第一篇吧！</div>
+        </div>
+        <table v-else class="w-full">
+          <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+            <tr>
+              <th class="px-4 py-3 text-left">标题</th>
+              <th class="px-4 py-3 text-left hidden md:table-cell">字数</th>
+              <th class="px-4 py-3 text-left hidden md:table-cell">来源</th>
+              <th class="px-4 py-3 text-left">状态</th>
+              <th class="px-4 py-3 text-left hidden md:table-cell">创建时间</th>
+              <th class="px-4 py-3 text-left">操作</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <tr v-for="article in articles" :key="article.id" class="hover:bg-gray-50">
+              <td class="px-4 py-3">
+                <div class="font-medium text-sm text-gray-800 max-w-xs truncate">{{ article.title }}</div>
+                <div class="text-xs text-gray-400 truncate max-w-xs">{{ article.summary }}</div>
+              </td>
+              <td class="px-4 py-3 text-sm text-gray-500 hidden md:table-cell">{{ article.word_count }}</td>
+              <td class="px-4 py-3 hidden md:table-cell">
+                <span v-if="article.ai_generated" class="status-badge bg-purple-100 text-purple-700">🤖 AI</span>
+                <span v-else class="status-badge bg-gray-100 text-gray-600">✍️ 手写</span>
+              </td>
+              <td class="px-4 py-3">
+                <span :class="['status-badge', 'status-' + article.status]">
+                  {{ article.status === 'draft' ? '草稿' : article.status === 'published' ? '已发布' : article.status }}
+                </span>
+              </td>
+              <td class="px-4 py-3 text-xs text-gray-400 hidden md:table-cell">{{ formatDate(article.created_at) }}</td>
+              <td class="px-4 py-3">
+                <div class="flex space-x-2">
+                  <button @click="editArticle(article)"
+                    class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">编辑</button>
+                  <button @click="publishArticleById(article)"
+                    class="text-xs text-green-600 hover:text-green-800 font-medium">发布</button>
+                  <button @click="deleteArticle(article.id)"
+                    class="text-xs text-red-500 hover:text-red-700 font-medium">删除</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== 平台发布 ===== -->
+    <div v-if="activeTab === 'publish'">
+      <h2 class="text-xl font-bold text-gray-800 mb-4">🌐 平台管理 & 发布记录</h2>
+      <!-- 平台状态 -->
+      <div class="bg-white rounded-xl p-5 shadow mb-6">
+        <h3 class="font-bold text-gray-700 mb-4">平台账号状态</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div v-for="p in platforms" :key="p.platform"
+            class="flex items-center justify-between p-4 rounded-xl border-2"
+            :class="p.logged_in ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'">
+            <div class="flex items-center space-x-3">
+              <span class="text-2xl">{{ p.icon }}</span>
+              <div>
+                <div class="font-bold text-sm">{{ p.name }}</div>
+                <div class="text-xs text-gray-400">{{ p.type === 'article' ? '图文文章' : p.type === 'note' ? '笔记' : '帖子' }}</div>
+              </div>
+            </div>
+            <div class="text-right">
+              <div v-if="p.logged_in">
+                <span class="status-badge status-success">✅ 已登录</span>
+                <div class="text-xs text-gray-400 mt-1">Cookie 有效</div>
+              </div>
+              <div v-else>
+                <span class="status-badge status-draft">未登录</span>
+                <a :href="p.login_url" target="_blank"
+                  class="block text-xs text-indigo-600 hover:text-indigo-800 mt-1">
+                  → 去登录
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mt-4 p-4 bg-blue-50 rounded-lg text-sm text-blue-700">
+          <strong>💡 登录说明：</strong>点击"去登录"在浏览器中手动登录对应平台后，系统将自动保存 Cookie 用于后续自动发布。
+          首次使用需要手动登录一次，之后即可自动发布。
+        </div>
+      </div>
+
+      <!-- 发布记录 -->
+      <div class="bg-white rounded-xl p-5 shadow">
+        <h3 class="font-bold text-gray-700 mb-4">📋 发布任务记录</h3>
+        <div v-if="publishTasks.length === 0" class="text-center text-gray-400 py-8">
+          暂无发布记录
+        </div>
+        <div v-else class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-xs text-gray-500">
+              <tr>
+                <th class="px-3 py-2 text-left">文章ID</th>
+                <th class="px-3 py-2 text-left">平台</th>
+                <th class="px-3 py-2 text-left">状态</th>
+                <th class="px-3 py-2 text-left">发布时间</th>
+                <th class="px-3 py-2 text-left">备注</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr v-for="task in publishTasks" :key="task.id" class="hover:bg-gray-50">
+                <td class="px-3 py-2 text-gray-600">#{{ task.article_id }}</td>
+                <td class="px-3 py-2">
+                  <span class="flex items-center space-x-1">
+                    <span>{{ getPlatformIcon(task.platform) }}</span>
+                    <span>{{ task.platform_name }}</span>
+                  </span>
+                </td>
+                <td class="px-3 py-2">
+                  <span :class="['status-badge', 'status-' + task.status]">
+                    {{ statusLabel(task.status) }}
+                  </span>
+                </td>
+                <td class="px-3 py-2 text-gray-400 text-xs">{{ formatDate(task.published_at || task.created_at) }}</td>
+                <td class="px-3 py-2 text-xs text-gray-500 max-w-xs truncate">
+                  {{ task.error_msg || (task.status === 'success' ? '发布成功' : '-') }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 平台适配 ===== -->
+    <div v-if="activeTab === 'adapt'">
+      <h2 class="text-xl font-bold text-gray-800 mb-4">🔄 一键多平台适配</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="space-y-4">
+          <div class="bg-white rounded-xl p-5 shadow">
+            <h3 class="font-bold text-gray-700 mb-3">原始内容</h3>
+            <input v-model="adaptForm.title" type="text" placeholder="文章标题..."
+              class="w-full border rounded-lg p-3 text-sm mb-3 focus:ring-2 focus:ring-indigo-300 outline-none" />
+            <textarea v-model="adaptForm.content" rows="10"
+              placeholder="粘贴原始文章内容..."
+              class="w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-300 outline-none"></textarea>
+          </div>
+          <div class="bg-white rounded-xl p-5 shadow">
+            <h3 class="font-bold text-gray-700 mb-3">选择目标平台</h3>
+            <div class="grid grid-cols-2 gap-2">
+              <div v-for="(style, key) in platformStyles" :key="key"
+                @click="toggleAdaptPlatform(key)"
+                :class="['platform-card rounded-lg p-3 text-sm',
+                  adaptForm.platforms.includes(key) ? 'selected' : 'bg-gray-50']">
+                <div class="font-medium">{{ style.name }}</div>
+                <div class="text-xs text-gray-400">{{ style.max_length }}字以内</div>
+              </div>
+            </div>
+            <button @click="adaptArticle"
+              :disabled="!adaptForm.title || !adaptForm.content || adaptForm.platforms.length === 0 || adaptLoading"
+              class="w-full mt-4 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 text-white rounded-lg py-2.5 text-sm font-medium">
+              {{ adaptLoading ? '⏳ 适配中...' : '🔄 一键适配所有平台' }}
+            </button>
+          </div>
+        </div>
+        <div>
+          <div v-if="Object.keys(adaptResults).length === 0" class="bg-white rounded-xl p-8 shadow text-center text-gray-400">
+            <div class="text-4xl mb-3">🔄</div>
+            <div>选择平台后点击适配，AI 将自动为每个平台调整内容风格</div>
+          </div>
+          <div v-else class="space-y-4">
+            <div v-for="(result, platform) in adaptResults" :key="platform"
+              class="bg-white rounded-xl p-5 shadow">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="font-bold text-gray-700">{{ result.platform_name || platform }}</h3>
+                <div class="flex space-x-2">
+                  <button @click="copyToClipboard(result.content)"
+                    class="text-xs text-indigo-600 hover:text-indigo-800">复制</button>
+                  <button @click="saveAdaptedArticle(platform, result)"
+                    class="text-xs text-green-600 hover:text-green-800">保存草稿</button>
+                </div>
+              </div>
+              <div v-if="result.error" class="text-red-500 text-sm">{{ result.error }}</div>
+              <div v-else>
+                <div class="text-xs text-gray-500 mb-2">字数：{{ result.content?.length || 0 }}</div>
+                <div class="text-sm text-gray-700 bg-gray-50 p-3 rounded max-h-48 overflow-auto">
+                  {{ result.content?.substring(0, 300) }}...
+                </div>
+                <div v-if="result.tags?.length" class="mt-2 flex flex-wrap gap-1">
+                  <span v-for="tag in result.tags" :key="tag"
+                    class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">#{{ tag }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== AI 配置 ===== -->
+    <div v-if="activeTab === 'settings'">
+      <h2 class="text-xl font-bold text-gray-800 mb-4">⚙️ AI 模型配置</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-xl p-5 shadow">
+          <h3 class="font-bold text-gray-700 mb-4">添加 AI 模型</h3>
+          <div class="space-y-3">
+            <div>
+              <label class="text-sm text-gray-600 block mb-1">配置名称</label>
+              <input v-model="aiConfigForm.name" type="text" placeholder="如：我的 GPT-4"
+                class="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-300 outline-none" />
+            </div>
+            <div>
+              <label class="text-sm text-gray-600 block mb-1">提供商</label>
+              <select v-model="aiConfigForm.provider"
+                class="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-300 outline-none">
+                <option value="openai">OpenAI / 兼容接口</option>
+                <option value="baidu">百度文心一言</option>
+                <option value="alibaba">阿里通义千问</option>
+                <option value="tencent">腾讯混元</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-sm text-gray-600 block mb-1">API Key</label>
+              <input v-model="aiConfigForm.api_key" type="password" placeholder="sk-..."
+                class="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-300 outline-none" />
+            </div>
+            <div>
+              <label class="text-sm text-gray-600 block mb-1">API Base URL（可选，用于自定义接口）</label>
+              <input v-model="aiConfigForm.api_base" type="text" placeholder="https://api.openai.com/v1"
+                class="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-300 outline-none" />
+            </div>
+            <div>
+              <label class="text-sm text-gray-600 block mb-1">模型名称</label>
+              <input v-model="aiConfigForm.model_name" type="text" placeholder="gpt-4.1-mini"
+                class="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-300 outline-none" />
+            </div>
+            <label class="flex items-center space-x-2 text-sm text-gray-600">
+              <input v-model="aiConfigForm.is_default" type="checkbox" class="rounded" />
+              <span>设为默认模型</span>
+            </label>
+            <button @click="saveAIConfig"
+              :disabled="!aiConfigForm.name || !aiConfigForm.api_key"
+              class="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 text-white rounded-lg py-2.5 text-sm font-medium">
+              保存配置
+            </button>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl p-5 shadow">
+          <h3 class="font-bold text-gray-700 mb-4">已保存的配置</h3>
+          <div v-if="aiConfigs.length === 0" class="text-center text-gray-400 py-8">
+            <div class="text-3xl mb-2">🤖</div>
+            <div class="text-sm">暂无配置，系统将使用内置默认模型</div>
+            <div class="text-xs text-gray-300 mt-1">（已预配置 gpt-4.1-mini）</div>
+          </div>
+          <div v-else class="space-y-3">
+            <div v-for="config in aiConfigs" :key="config.id"
+              class="flex items-center justify-between p-3 rounded-lg border"
+              :class="config.is_default ? 'border-indigo-300 bg-indigo-50' : 'border-gray-200'">
+              <div>
+                <div class="font-medium text-sm">{{ config.name }}</div>
+                <div class="text-xs text-gray-400">{{ config.model_name }} · {{ config.provider }}</div>
+              </div>
+              <div class="flex items-center space-x-2">
+                <span v-if="config.is_default" class="status-badge bg-indigo-100 text-indigo-700">默认</span>
+                <button @click="deleteAIConfig(config.id)"
+                  class="text-xs text-red-500 hover:text-red-700">删除</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 发布弹窗 -->
+  <div v-if="showPublishModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+      <h3 class="text-lg font-bold text-gray-800 mb-4">🚀 发布文章</h3>
+      <div class="mb-4 p-3 bg-gray-50 rounded-lg">
+        <div class="font-medium text-sm text-gray-700 truncate">{{ editor.title }}</div>
+        <div class="text-xs text-gray-400 mt-0.5">{{ editor.content.length }} 字</div>
+      </div>
+      <h4 class="text-sm font-medium text-gray-600 mb-2">选择发布平台：</h4>
+      <div class="grid grid-cols-2 gap-2 mb-4">
+        <div v-for="p in platforms" :key="p.platform"
+          @click="togglePublishPlatform(p.platform)"
+          :class="['platform-card rounded-lg p-3 text-sm',
+            publishForm.platforms.includes(p.platform) ? 'selected' : 'bg-gray-50']">
+          <div class="flex items-center space-x-2">
+            <span>{{ p.icon }}</span>
+            <div>
+              <div class="font-medium text-xs">{{ p.name }}</div>
+              <div v-if="!p.logged_in" class="text-xs text-orange-500">需先登录</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="flex space-x-3">
+        <button @click="showPublishModal = false"
+          class="flex-1 border border-gray-300 text-gray-700 rounded-lg py-2 text-sm font-medium hover:bg-gray-50">
+          取消
+        </button>
+        <button @click="confirmPublish"
+          :disabled="publishForm.platforms.length === 0 || publishing"
+          class="flex-1 bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 text-white rounded-lg py-2 text-sm font-medium">
+          {{ publishing ? '⏳ 发布中...' : `🚀 发布到 ${publishForm.platforms.length} 个平台` }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 通知 -->
+  <div v-if="toast.show" class="fixed bottom-6 right-6 z-50">
+    <div :class="['px-5 py-3 rounded-xl shadow-lg text-white text-sm font-medium transition-all',
+      toast.type === 'success' ? 'bg-green-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-indigo-500']">
+      {{ toast.message }}
+    </div>
+  </div>
+
+</div>
+
+<script>
+const { createApp, ref, reactive, onMounted, computed } = Vue;
+
+// 动态检测 API 地址
+const API_BASE = (() => {
+  const host = window.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1') {
+    return 'http://localhost:8001';
+  }
+  // 公网访问时，将端口 8080 替换为 8001
+  const apiUrl = window.location.origin.replace('8080-', '8001-');
+  return apiUrl;
+})();
+
+createApp({
+  setup() {
+    const activeTab = ref('dashboard');
+    const tabs = [
+      { key: 'dashboard', label: '看板', icon: '📊' },
+      { key: 'create', label: 'AI 创作', icon: '✍️' },
+      { key: 'articles', label: '文章库', icon: '📚' },
+      { key: 'adapt', label: '多平台适配', icon: '🔄' },
+      { key: 'publish', label: '发布管理', icon: '🌐' },
+      { key: 'settings', label: '设置', icon: '⚙️' },
+    ];
+
+    const stats = ref({});
+    const platforms = ref([]);
+    const articles = ref([]);
+    const publishTasks = ref([]);
+    const recentTasks = ref([]);
+    const aiConfigs = ref([]);
+    const platformStyles = ref({});
+
+    const aiLoading = ref(false);
+    const currentAction = ref('');
+    const adaptLoading = ref(false);
+    const publishing = ref(false);
+    const editorMode = ref('edit');
+    const showPublishModal = ref(false);
+    const currentArticleId = ref(null);
+
+    const generatedTitles = ref([]);
+    const generatedOutline = ref('');
+    const hotTopics = ref([]);
+    const adaptResults = ref({});
+
+    const createForm = reactive({
+      topic: '',
+      platform: 'general',
+      keywords: '',
+      selectedTitle: '',
+    });
+
+    const editor = reactive({
+      title: '',
+      content: '',
+    });
+
+    const adaptForm = reactive({
+      title: '',
+      content: '',
+      platforms: [],
+    });
+
+    const publishForm = reactive({
+      platforms: [],
+    });
+
+    const aiConfigForm = reactive({
+      name: '',
+      provider: 'openai',
+      api_key: '',
+      api_base: '',
+      model_name: 'gpt-4.1-mini',
+      is_default: false,
+    });
+
+    const toast = reactive({ show: false, message: '', type: 'success' });
+
+    function showToast(message, type = 'success') {
+      toast.message = message;
+      toast.type = type;
+      toast.show = true;
+      setTimeout(() => { toast.show = false; }, 3000);
+    }
+
+    async function fetchAPI(path, options = {}) {
+      const res = await fetch(`${API_BASE}${path}`, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    }
+
+    async function loadDashboard() {
+      try {
+        const [statsData, platformsData, tasksData] = await Promise.all([
+          fetchAPI('/api/stats'),
+          fetchAPI('/api/platforms'),
+          fetchAPI('/api/publish/tasks?limit=10'),
+        ]);
+        stats.value = statsData;
+        platforms.value = platformsData.platforms || [];
+        recentTasks.value = tasksData.tasks || [];
+      } catch (e) {
+        console.error('加载看板失败', e);
+      }
+    }
+
+    async function loadArticles() {
+      try {
+        const data = await fetchAPI('/api/articles?limit=50');
+        articles.value = data.articles || [];
+      } catch (e) { console.error(e); }
+    }
+
+    async function loadPublishTasks() {
+      try {
+        const data = await fetchAPI('/api/publish/tasks?limit=50');
+        publishTasks.value = data.tasks || [];
+      } catch (e) { console.error(e); }
+    }
+
+    async function loadAIConfigs() {
+      try {
+        const data = await fetchAPI('/api/ai-configs');
+        aiConfigs.value = data.configs || [];
+      } catch (e) { console.error(e); }
+    }
+
+    async function loadPlatformStyles() {
+      try {
+        const data = await fetchAPI('/api/platform-styles');
+        platformStyles.value = data.styles || {};
+      } catch (e) { console.error(e); }
+    }
+
+    async function generateTitles() {
+      if (!createForm.topic) return;
+      aiLoading.value = true;
+      currentAction.value = 'titles';
+      try {
+        const data = await fetchAPI('/api/ai/titles', {
+          method: 'POST',
+          body: JSON.stringify({ topic: createForm.topic, platform: createForm.platform, count: 6 }),
+        });
+        generatedTitles.value = data.titles || [];
+        showToast(`生成了 ${data.titles?.length || 0} 个标题候选`);
+      } catch (e) {
+        showToast('生成失败：' + e.message, 'error');
+      } finally {
+        aiLoading.value = false;
+      }
+    }
+
+    async function generateOutline() {
+      if (!createForm.selectedTitle) return;
+      aiLoading.value = true;
+      currentAction.value = 'outline';
+      try {
+        const data = await fetchAPI('/api/ai/outline', {
+          method: 'POST',
+          body: JSON.stringify({ topic: createForm.selectedTitle, platform: createForm.platform }),
+        });
+        generatedOutline.value = data.outline || '';
+        showToast('大纲生成成功');
+      } catch (e) {
+        showToast('生成失败：' + e.message, 'error');
+      } finally {
+        aiLoading.value = false;
+      }
+    }
+
+    async function generateFullArticle() {
+      if (!createForm.selectedTitle) return;
+      aiLoading.value = true;
+      currentAction.value = 'article';
+      try {
+        const keywords = createForm.keywords ? createForm.keywords.split(',').map(k => k.trim()) : null;
+        const data = await fetchAPI('/api/ai/article', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: createForm.selectedTitle,
+            platform: createForm.platform,
+            outline: generatedOutline.value || null,
+            keywords,
+          }),
+        });
+        editor.title = data.title;
+        editor.content = data.content;
+        currentArticleId.value = data.article_id;
+        showToast(`文章生成成功（${data.word_count} 字），已自动保存为草稿`);
+        activeTab.value = 'create';
+      } catch (e) {
+        showToast('生成失败：' + e.message, 'error');
+      } finally {
+        aiLoading.value = false;
+      }
+    }
+
+    async function getHotTopics() {
+      aiLoading.value = true;
+      currentAction.value = 'hot';
+      try {
+        const data = await fetchAPI('/api/ai/hot-topics', {
+          method: 'POST',
+          body: JSON.stringify({ category: '科技' }),
+        });
+        hotTopics.value = data.topics || [];
+        showToast(`获取到 ${data.topics?.length || 0} 个热门话题`);
+      } catch (e) {
+        showToast('获取失败：' + e.message, 'error');
+      } finally {
+        aiLoading.value = false;
+      }
+    }
+
+    function selectTitle(title) {
+      createForm.selectedTitle = title;
+      editor.title = title;
+    }
+
+    async function saveArticle() {
+      try {
+        if (currentArticleId.value) {
+          await fetchAPI(`/api/articles/${currentArticleId.value}`, {
+            method: 'PUT',
+            body: JSON.stringify({ title: editor.title, content: editor.content, summary: '', tags: '', ai_generated: true }),
+          });
+        } else {
+          const data = await fetchAPI('/api/articles', {
+            method: 'POST',
+            body: JSON.stringify({ title: editor.title, content: editor.content, summary: '', tags: '', ai_generated: false }),
+          });
+          currentArticleId.value = data.id;
+        }
+        showToast('草稿保存成功');
+        loadArticles();
+      } catch (e) {
+        showToast('保存失败', 'error');
+      }
+    }
+
+    function openPublishModal() {
+      publishForm.platforms = [];
+      showPublishModal.value = true;
+    }
+
+    function togglePublishPlatform(platform) {
+      const idx = publishForm.platforms.indexOf(platform);
+      if (idx > -1) publishForm.platforms.splice(idx, 1);
+      else publishForm.platforms.push(platform);
+    }
+
+    async function confirmPublish() {
+      if (!currentArticleId.value) {
+        // 先保存
+        await saveArticle();
+      }
+      if (!currentArticleId.value) {
+        showToast('请先保存文章', 'error');
+        return;
+      }
+      publishing.value = true;
+      try {
+        const data = await fetchAPI('/api/publish', {
+          method: 'POST',
+          body: JSON.stringify({ article_id: currentArticleId.value, platforms: publishForm.platforms }),
+        });
+        showPublishModal.value = false;
+        showToast(data.message || '发布任务已提交');
+        loadDashboard();
+        loadPublishTasks();
+      } catch (e) {
+        showToast('发布失败：' + e.message, 'error');
+      } finally {
+        publishing.value = false;
+      }
+    }
+
+    function editArticle(article) {
+      editor.title = article.title;
+      editor.content = '';
+      currentArticleId.value = article.id;
+      activeTab.value = 'create';
+      // 加载完整内容
+      fetchAPI(`/api/articles/${article.id}`).then(data => {
+        editor.content = data.content || '';
+      });
+    }
+
+    function publishArticleById(article) {
+      editor.title = article.title;
+      currentArticleId.value = article.id;
+      fetchAPI(`/api/articles/${article.id}`).then(data => {
+        editor.content = data.content || '';
+        openPublishModal();
+      });
+    }
+
+    async function deleteArticle(id) {
+      if (!confirm('确认删除这篇文章？')) return;
+      try {
+        await fetchAPI(`/api/articles/${id}`, { method: 'DELETE' });
+        showToast('删除成功');
+        loadArticles();
+      } catch (e) {
+        showToast('删除失败', 'error');
+      }
+    }
+
+    function toggleAdaptPlatform(platform) {
+      const idx = adaptForm.platforms.indexOf(platform);
+      if (idx > -1) adaptForm.platforms.splice(idx, 1);
+      else adaptForm.platforms.push(platform);
+    }
+
+    async function adaptArticle() {
+      adaptLoading.value = true;
+      adaptResults.value = {};
+      try {
+        const data = await fetchAPI('/api/ai/adapt', {
+          method: 'POST',
+          body: JSON.stringify({ title: adaptForm.title, content: adaptForm.content, platforms: adaptForm.platforms }),
+        });
+        adaptResults.value = data.results || {};
+        showToast(`已完成 ${Object.keys(data.results || {}).length} 个平台的内容适配`);
+      } catch (e) {
+        showToast('适配失败：' + e.message, 'error');
+      } finally {
+        adaptLoading.value = false;
+      }
+    }
+
+    async function saveAdaptedArticle(platform, result) {
+      try {
+        await fetchAPI('/api/articles', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: `${result.title} [${result.platform_name}版]`,
+            content: result.content,
+            summary: '',
+            tags: (result.tags || []).join(','),
+            ai_generated: true,
+          }),
+        });
+        showToast(`${result.platform_name}版本已保存为草稿`);
+        loadArticles();
+      } catch (e) {
+        showToast('保存失败', 'error');
+      }
+    }
+
+    async function saveAIConfig() {
+      try {
+        await fetchAPI('/api/ai-configs', {
+          method: 'POST',
+          body: JSON.stringify(aiConfigForm),
+        });
+        showToast('AI 配置保存成功');
+        Object.assign(aiConfigForm, { name: '', api_key: '', api_base: '', model_name: 'gpt-4.1-mini', is_default: false });
+        loadAIConfigs();
+      } catch (e) {
+        showToast('保存失败', 'error');
+      }
+    }
+
+    async function deleteAIConfig(id) {
+      try {
+        await fetchAPI(`/api/ai-configs/${id}`, { method: 'DELETE' });
+        showToast('配置已删除');
+        loadAIConfigs();
+      } catch (e) {
+        showToast('删除失败', 'error');
+      }
+    }
+
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text).then(() => showToast('已复制到剪贴板'));
+    }
+
+    function renderMarkdown(text) {
+      if (!text) return '';
+      try { return marked.parse(text); } catch { return text; }
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '-';
+      const d = new Date(dateStr);
+      return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+    }
+
+    function statusLabel(status) {
+      const map = { pending: '等待', running: '发布中', success: '成功', failed: '失败', draft: '草稿', published: '已发布' };
+      return map[status] || status;
+    }
+
+    function getPlatformIcon(platform) {
+      const icons = { zhihu: '🔵', wechat: '🟢', baijia: '🔴', toutiao: '🟠', xiaohongshu: '🔴', weibo: '🟡', bilibili: '🔵', douyin: '⚫' };
+      return icons[platform] || '⚪';
+    }
+
+    onMounted(async () => {
+      await Promise.all([loadDashboard(), loadArticles(), loadAIConfigs(), loadPlatformStyles()]);
+    });
+
+    return {
+      activeTab, tabs, stats, platforms, articles, publishTasks, recentTasks, aiConfigs, platformStyles,
+      aiLoading, currentAction, adaptLoading, publishing, editorMode, showPublishModal, currentArticleId,
+      generatedTitles, generatedOutline, hotTopics, adaptResults,
+      createForm, editor, adaptForm, publishForm, aiConfigForm, toast,
+      generateTitles, generateOutline, generateFullArticle, getHotTopics,
+      selectTitle, saveArticle, openPublishModal, togglePublishPlatform, confirmPublish,
+      editArticle, publishArticleById, deleteArticle,
+      toggleAdaptPlatform, adaptArticle, saveAdaptedArticle,
+      saveAIConfig, deleteAIConfig, copyToClipboard,
+      renderMarkdown, formatDate, statusLabel, getPlatformIcon,
+      loadPublishTasks, loadArticles,
+    };
+  },
+
+  watch: {
+    activeTab(tab) {
+      if (tab === 'articles') this.loadArticles();
+      if (tab === 'publish') this.loadPublishTasks();
+      if (tab === 'dashboard') {
+        this.loadDashboard?.();
+      }
+    }
+  },
+
+  methods: {
+    async loadDashboard() {
+      // handled in setup
+    }
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
