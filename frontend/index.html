@@ -33,10 +33,28 @@
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: #f1f5f9; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    /* 审核评分圆环 */
+    .score-ring { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+    .score-ring svg { transform: rotate(-90deg); }
+    .score-text { position: absolute; font-size: 1.1rem; font-weight: 700; }
+    /* 模型 badge */
+    .model-badge { background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.35); backdrop-filter: blur(4px); }
+    /* 平台差异化标签 */
+    .diff-tag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 600; margin: 1px; }
+    /* 审核层级指示 */
+    .layer-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+    .layer-pass { background: #10b981; }
+    .layer-warn { background: #f59e0b; }
+    .layer-fail { background: #ef4444; }
+    .layer-skip { background: #9ca3af; }
+    /* 进度条动画 */
+    @keyframes progress-fill { from { width: 0; } }
+    .progress-bar { animation: progress-fill 0.8s ease-out; }
   </style>
 </head>
 <body class="bg-gray-50 min-h-screen" v-cloak>
 <div id="app">
+
   <!-- 顶部导航 -->
   <nav class="gradient-bg text-white shadow-lg sticky top-0 z-50">
     <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -44,23 +62,32 @@
         <span class="text-2xl">🚀</span>
         <div>
           <h1 class="text-lg font-bold leading-tight">自媒体运营自动化平台</h1>
-          <p class="text-xs text-purple-200">AI 驱动 · 多平台 · 高效运营</p>
+          <p class="text-xs text-purple-200">AI 驱动 · 多平台差异化 · 智能合规审核</p>
         </div>
       </div>
-      <div class="flex items-center space-x-2">
-        <span class="text-xs bg-white bg-opacity-20 px-3 py-1 rounded-full">
-          {{ stats.articles?.total || 0 }} 篇文章
+      <div class="flex items-center space-x-2 flex-wrap gap-y-1">
+        <!-- 当前模型实时显示 -->
+        <span v-if="modelInfo.current" class="model-badge text-xs px-3 py-1 rounded-full flex items-center space-x-1">
+          <span>🤖</span>
+          <span class="font-medium">{{ modelInfo.current.name }}</span>
+          <span class="text-purple-200">·</span>
+          <span class="text-purple-200">{{ modelInfo.current.model }}</span>
+        </span>
+        <!-- 审核状态指示 -->
+        <span class="model-badge text-xs px-3 py-1 rounded-full flex items-center space-x-1">
+          <span :class="moderationEnabled ? 'text-green-300' : 'text-yellow-300'">●</span>
+          <span>{{ moderationEnabled ? 'Qwen 审核已启用' : '仅本地审核' }}</span>
         </span>
         <span class="text-xs bg-white bg-opacity-20 px-3 py-1 rounded-full">
-          {{ stats.publish_tasks?.success || 0 }} 次发布
+          {{ stats.articles?.total || 0 }} 篇文章
         </span>
       </div>
     </div>
     <!-- 标签页 -->
-    <div class="max-w-7xl mx-auto px-4 flex space-x-1 pb-2">
+    <div class="max-w-7xl mx-auto px-4 flex space-x-1 pb-2 overflow-x-auto">
       <button v-for="tab in tabs" :key="tab.key"
         @click="activeTab = tab.key"
-        :class="['px-4 py-1.5 rounded-t text-sm font-medium transition-colors',
+        :class="['px-4 py-1.5 rounded-t text-sm font-medium transition-colors whitespace-nowrap',
           activeTab === tab.key ? 'bg-white text-purple-700' : 'text-purple-200 hover:text-white hover:bg-white hover:bg-opacity-10']">
         {{ tab.icon }} {{ tab.label }}
       </button>
@@ -72,6 +99,7 @@
     <!-- ===== 仪表盘 ===== -->
     <div v-if="activeTab === 'dashboard'">
       <h2 class="text-xl font-bold text-gray-800 mb-4">📊 运营看板</h2>
+
       <!-- 统计卡片 -->
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div class="bg-white rounded-xl p-4 shadow card-hover">
@@ -92,10 +120,85 @@
         </div>
       </div>
 
+      <!-- AI 模型 & 审核状态总览 -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <!-- 当前 AI 模型信息 -->
+        <div class="bg-white rounded-xl p-5 shadow">
+          <h3 class="font-bold text-gray-700 mb-3">🤖 当前 AI 模型</h3>
+          <div v-if="modelInfo.current" class="space-y-3">
+            <div class="flex items-center justify-between p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+              <div>
+                <div class="font-bold text-indigo-800">{{ modelInfo.current.name }}</div>
+                <div class="text-xs text-indigo-500 mt-0.5">{{ modelInfo.current.model }}</div>
+              </div>
+              <div class="text-right">
+                <div class="text-xs text-gray-500">用于内容生成</div>
+                <div class="text-xs text-green-600 font-medium mt-0.5">✅ 已就绪</div>
+              </div>
+            </div>
+            <!-- 审核模型 -->
+            <div class="flex items-center justify-between p-3 rounded-lg border"
+              :class="moderationEnabled ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-200'">
+              <div>
+                <div class="font-bold" :class="moderationEnabled ? 'text-green-800' : 'text-gray-500'">
+                  通义千问 qwen-plus
+                </div>
+                <div class="text-xs mt-0.5" :class="moderationEnabled ? 'text-green-500' : 'text-gray-400'">
+                  用于内容合规审核（Layer 2）
+                </div>
+              </div>
+              <div class="text-right">
+                <span v-if="moderationEnabled" class="status-badge status-success">✅ 已启用</span>
+                <span v-else class="status-badge status-draft">未配置</span>
+                <div class="text-xs text-gray-400 mt-0.5">{{ moderationEnabled ? 'DASHSCOPE_API_KEY' : '需配置 Key' }}</div>
+              </div>
+            </div>
+            <div class="text-xs text-gray-400 bg-gray-50 rounded p-2">
+              💡 DeepSeek 负责生成，Qwen 负责审核，分工明确，成本最优
+            </div>
+          </div>
+          <div v-else class="text-center text-gray-400 py-4 text-sm">加载中...</div>
+        </div>
+
+        <!-- 三层审核说明 -->
+        <div class="bg-white rounded-xl p-5 shadow">
+          <h3 class="font-bold text-gray-700 mb-3">🛡️ 内容审核流水线</h3>
+          <div class="space-y-2">
+            <div class="flex items-start space-x-3 p-2.5 rounded-lg bg-green-50">
+              <span class="layer-dot layer-pass mt-1.5 flex-shrink-0"></span>
+              <div>
+                <div class="text-sm font-medium text-green-800">Layer 1 · 本地敏感词检测</div>
+                <div class="text-xs text-green-600 mt-0.5">毫秒级 · 无需 API Key · 内置金融/营销/平台禁词库</div>
+              </div>
+            </div>
+            <div class="flex items-start space-x-3 p-2.5 rounded-lg"
+              :class="moderationEnabled ? 'bg-blue-50' : 'bg-gray-50'">
+              <span class="layer-dot mt-1.5 flex-shrink-0"
+                :class="moderationEnabled ? 'layer-pass' : 'layer-skip'"></span>
+              <div>
+                <div class="text-sm font-medium" :class="moderationEnabled ? 'text-blue-800' : 'text-gray-500'">
+                  Layer 2 · Qwen 语义审核
+                </div>
+                <div class="text-xs mt-0.5" :class="moderationEnabled ? 'text-blue-600' : 'text-gray-400'">
+                  {{ moderationEnabled ? '通义千问 + 阿里云 CIP · 输出合规评分 0-100' : '需配置 DASHSCOPE_API_KEY 启用' }}
+                </div>
+              </div>
+            </div>
+            <div class="flex items-start space-x-3 p-2.5 rounded-lg bg-purple-50">
+              <span class="layer-dot layer-pass mt-1.5 flex-shrink-0"></span>
+              <div>
+                <div class="text-sm font-medium text-purple-800">Layer 3 · AI 合规改写</div>
+                <div class="text-xs text-purple-600 mt-0.5">自动修复违规内容 · 保持原文风格 · 生成后即时触发</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 平台状态 -->
       <div class="bg-white rounded-xl p-5 shadow mb-6">
         <h3 class="font-bold text-gray-700 mb-4">🌐 平台账号状态</h3>
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div v-for="p in platforms" :key="p.platform"
             class="flex items-center justify-between p-3 rounded-lg border">
             <div class="flex items-center space-x-2">
@@ -105,10 +208,8 @@
                 <div class="text-xs text-gray-400">{{ p.type }}</div>
               </div>
             </div>
-            <div>
-              <span v-if="p.logged_in" class="status-badge status-success">已登录</span>
-              <span v-else class="status-badge status-draft">未登录</span>
-            </div>
+            <span v-if="p.logged_in" class="status-badge status-success">已登录</span>
+            <span v-else class="status-badge status-draft">未登录</span>
           </div>
         </div>
       </div>
@@ -139,20 +240,38 @@
 
     <!-- ===== AI 创作 ===== -->
     <div v-if="activeTab === 'create'">
-      <h2 class="text-xl font-bold text-gray-800 mb-4">✍️ AI 智能创作</h2>
+      <h2 class="text-xl font-bold text-gray-800 mb-1">✍️ AI 智能创作</h2>
+      <p class="text-sm text-gray-500 mb-4">生成完成后自动触发三层合规审核，确保内容安全可发布</p>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- 左侧：创作控制 -->
         <div class="space-y-4">
           <!-- 选择目标平台 -->
           <div class="bg-white rounded-xl p-5 shadow">
-            <h3 class="font-bold text-gray-700 mb-3">🎯 目标平台风格</h3>
+            <h3 class="font-bold text-gray-700 mb-1">🎯 目标平台风格</h3>
+            <p class="text-xs text-gray-400 mb-3">不同平台生成完全不同风格的内容，而非简单复制</p>
             <div class="grid grid-cols-3 gap-2">
               <div v-for="(style, key) in platformStyles" :key="key"
                 @click="createForm.platform = key"
                 :class="['platform-card rounded-lg p-2 text-center text-sm',
                   createForm.platform === key ? 'selected' : 'bg-gray-50']">
                 <div class="font-medium">{{ style.name }}</div>
-                <div class="text-xs text-gray-400 mt-0.5 truncate">{{ style.max_length }}字</div>
+                <div class="text-xs text-gray-400 mt-0.5">{{ style.max_length }}字</div>
+                <div v-if="style.tone" class="text-xs mt-0.5 truncate"
+                  :class="createForm.platform === key ? 'text-indigo-500' : 'text-gray-300'">
+                  {{ style.tone }}
+                </div>
+              </div>
+            </div>
+            <!-- 选中平台的差异化说明 -->
+            <div v-if="createForm.platform && platformStyles[createForm.platform]"
+              class="mt-3 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+              <div class="text-xs font-medium text-indigo-700 mb-1">
+                {{ platformStyles[createForm.platform].name }} 专属风格
+              </div>
+              <div class="text-xs text-indigo-600">{{ platformStyles[createForm.platform].style }}</div>
+              <div v-if="platformStyles[createForm.platform].special_rules?.length" class="mt-1.5 flex flex-wrap gap-1">
+                <span v-for="rule in platformStyles[createForm.platform].special_rules.slice(0,3)" :key="rule"
+                  class="diff-tag bg-indigo-100 text-indigo-700">{{ rule }}</span>
               </div>
             </div>
           </div>
@@ -184,7 +303,7 @@
             <button @click="generateFullArticle"
               :disabled="!createForm.selectedTitle || aiLoading"
               class="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
-              {{ aiLoading && currentAction === 'article' ? '⏳ 生成中...' : '✨ 一键生成完整文章' }}
+              {{ aiLoading && currentAction === 'article' ? '⏳ 生成 + 审核中...' : '✨ 一键生成完整文章（含审核）' }}
             </button>
             <button @click="getHotTopics"
               :disabled="aiLoading"
@@ -213,14 +332,14 @@
               <div v-for="(topic, idx) in hotTopics" :key="idx"
                 @click="createForm.topic = topic.title; createForm.selectedTitle = topic.title"
                 class="p-2.5 rounded-lg text-sm cursor-pointer bg-orange-50 hover:bg-orange-100 transition-colors">
-                <div class="font-medium text-orange-800">{{ topic.title }}</div>
+                <div class="font-medium">{{ topic.title }}</div>
                 <div class="text-xs text-gray-500 mt-0.5">{{ topic.description }}</div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- 右侧：文章编辑器 -->
+        <!-- 右侧：文章编辑器 + 审核报告 -->
         <div class="space-y-4">
           <div class="bg-white rounded-xl p-5 shadow">
             <div class="flex items-center justify-between mb-3">
@@ -239,11 +358,11 @@
             <input v-model="editor.title" type="text" placeholder="文章标题..."
               class="w-full border rounded-lg p-3 text-base font-bold mb-3 focus:ring-2 focus:ring-indigo-300 outline-none" />
             <div v-if="editorMode === 'edit'">
-              <textarea v-model="editor.content" rows="18"
+              <textarea v-model="editor.content" rows="16"
                 placeholder="文章内容（支持 Markdown）..."
                 class="w-full border rounded-lg p-3 text-sm font-mono focus:ring-2 focus:ring-indigo-300 outline-none"></textarea>
             </div>
-            <div v-else class="border rounded-lg p-4 min-h-64 prose-content text-sm bg-gray-50 overflow-auto max-h-96"
+            <div v-else class="border rounded-lg p-4 min-h-64 prose-content text-sm bg-gray-50 overflow-auto max-h-80"
               v-html="renderMarkdown(editor.content)"></div>
             <div class="flex items-center justify-between mt-3 text-xs text-gray-400">
               <span>字数：{{ editor.content.length }}</span>
@@ -259,6 +378,86 @@
                   🚀 发布文章
                 </button>
               </div>
+            </div>
+          </div>
+
+          <!-- 审核报告面板（生成后显示） -->
+          <div v-if="lastModerationResult" class="bg-white rounded-xl p-5 shadow border-l-4"
+            :class="lastModerationResult.final?.passed ? 'border-green-400' : 'border-red-400'">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-bold text-gray-700">🛡️ 内容审核报告</h3>
+              <div class="flex items-center space-x-2">
+                <!-- 合规评分 -->
+                <div class="text-center">
+                  <div class="text-2xl font-bold"
+                    :class="lastModerationResult.layer2?.score >= 80 ? 'text-green-600' : lastModerationResult.layer2?.score >= 60 ? 'text-yellow-600' : 'text-red-600'">
+                    {{ lastModerationResult.layer2?.score || '-' }}
+                  </div>
+                  <div class="text-xs text-gray-400">合规分</div>
+                </div>
+                <span :class="['status-badge', lastModerationResult.final?.passed ? 'status-success' : 'status-failed']">
+                  {{ lastModerationResult.final?.passed ? '✅ 审核通过' : '❌ 需要修复' }}
+                </span>
+              </div>
+            </div>
+
+            <!-- 三层状态 -->
+            <div class="grid grid-cols-3 gap-2 mb-3">
+              <div class="text-center p-2 rounded-lg bg-gray-50">
+                <div class="text-xs text-gray-500 mb-1">Layer 1</div>
+                <div class="text-xs font-medium"
+                  :class="lastModerationResult.layer1?.has_blocked_words ? 'text-red-600' : 'text-green-600'">
+                  {{ lastModerationResult.layer1?.has_blocked_words ? '⚠️ 有违禁词' : '✅ 无违禁词' }}
+                </div>
+                <div class="text-xs text-gray-400">{{ lastModerationResult.layer1?.word_count || 0 }} 个标记</div>
+              </div>
+              <div class="text-center p-2 rounded-lg bg-gray-50">
+                <div class="text-xs text-gray-500 mb-1">Layer 2</div>
+                <div class="text-xs font-medium"
+                  :class="lastModerationResult.layer2?.skipped ? 'text-gray-400' : lastModerationResult.layer2?.passed ? 'text-green-600' : 'text-red-600'">
+                  {{ lastModerationResult.layer2?.skipped ? '⏭️ 已跳过' : lastModerationResult.layer2?.passed ? '✅ 语义合规' : '❌ 语义违规' }}
+                </div>
+                <div class="text-xs text-gray-400">{{ lastModerationResult.layer2?.issues?.length || 0 }} 个问题</div>
+              </div>
+              <div class="text-center p-2 rounded-lg bg-gray-50">
+                <div class="text-xs text-gray-500 mb-1">Layer 3</div>
+                <div class="text-xs font-medium"
+                  :class="lastModerationResult.layer3?.was_rewritten ? 'text-blue-600' : 'text-green-600'">
+                  {{ lastModerationResult.layer3?.was_rewritten ? '✏️ 已自动改写' : '✅ 无需改写' }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Qwen 总结 -->
+            <div v-if="lastModerationResult.layer2?.summary" class="text-xs text-gray-600 bg-gray-50 rounded p-2 mb-2">
+              {{ lastModerationResult.layer2.summary }}
+            </div>
+
+            <!-- 问题列表 -->
+            <div v-if="lastModerationResult.layer2?.issues?.length > 0" class="space-y-1">
+              <div v-for="(issue, idx) in lastModerationResult.layer2.issues" :key="idx"
+                class="text-xs p-2 rounded border-l-2"
+                :class="issue.severity === 'high' ? 'border-red-400 bg-red-50' : issue.severity === 'medium' ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300 bg-gray-50'">
+                <span class="font-medium">{{ issue.description }}</span>
+                <span v-if="issue.suggestion" class="text-gray-500 ml-1">→ {{ issue.suggestion }}</span>
+              </div>
+            </div>
+
+            <!-- 各平台可发布建议 -->
+            <div v-if="Object.keys(lastModerationResult.layer2?.platform_suggestions || {}).length > 0" class="mt-2">
+              <div class="text-xs text-gray-500 mb-1">各平台可发布状态：</div>
+              <div class="flex flex-wrap gap-1">
+                <span v-for="(ok, plat) in lastModerationResult.layer2.platform_suggestions" :key="plat"
+                  :class="['diff-tag', ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600']">
+                  {{ ok ? '✓' : '✗' }} {{ getPlatformName(plat) }}
+                </span>
+              </div>
+            </div>
+
+            <!-- 需要人工审核提示 -->
+            <div v-if="lastModerationResult.final?.requires_manual_review"
+              class="mt-2 text-xs text-yellow-700 bg-yellow-50 rounded p-2">
+              ⚠️ 建议人工复核后再发布
             </div>
           </div>
 
@@ -335,10 +534,296 @@
       </div>
     </div>
 
+    <!-- ===== 平台适配 ===== -->
+    <div v-if="activeTab === 'adapt'">
+      <h2 class="text-xl font-bold text-gray-800 mb-1">🔄 一键多平台差异化适配</h2>
+      <p class="text-sm text-gray-500 mb-4">同一篇文章，AI 为每个平台生成截然不同的风格版本，而非简单复制粘贴</p>
+
+      <!-- 平台差异化说明卡片 -->
+      <div class="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-4 mb-5 border border-indigo-100">
+        <h3 class="font-bold text-indigo-800 mb-3 text-sm">各平台差异化风格一览</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div v-for="(style, key) in platformStyles" :key="key"
+            class="bg-white rounded-lg p-2.5 border border-indigo-100">
+            <div class="font-medium text-sm text-gray-800">{{ style.name }}</div>
+            <div class="text-xs text-indigo-600 mt-0.5">{{ style.tone }}</div>
+            <div class="text-xs text-gray-400 mt-1">{{ style.max_length }}字以内</div>
+            <div v-if="style.special_rules?.length" class="mt-1 flex flex-wrap gap-0.5">
+              <span v-for="rule in style.special_rules.slice(0,2)" :key="rule"
+                class="diff-tag bg-indigo-50 text-indigo-600">{{ rule }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="space-y-4">
+          <div class="bg-white rounded-xl p-5 shadow">
+            <h3 class="font-bold text-gray-700 mb-3">原始内容</h3>
+            <input v-model="adaptForm.title" type="text" placeholder="文章标题..."
+              class="w-full border rounded-lg p-3 text-sm mb-3 focus:ring-2 focus:ring-indigo-300 outline-none" />
+            <textarea v-model="adaptForm.content" rows="10"
+              placeholder="粘贴原始文章内容..."
+              class="w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-300 outline-none"></textarea>
+          </div>
+          <div class="bg-white rounded-xl p-5 shadow">
+            <h3 class="font-bold text-gray-700 mb-3">选择目标平台</h3>
+            <div class="grid grid-cols-2 gap-2">
+              <div v-for="(style, key) in platformStyles" :key="key"
+                @click="toggleAdaptPlatform(key)"
+                :class="['platform-card rounded-lg p-3 text-sm',
+                  adaptForm.platforms.includes(key) ? 'selected' : 'bg-gray-50']">
+                <div class="font-medium">{{ style.name }}</div>
+                <div class="text-xs text-indigo-500 mt-0.5">{{ style.tone }}</div>
+                <div class="text-xs text-gray-400">{{ style.max_length }}字以内</div>
+              </div>
+            </div>
+            <button @click="adaptArticle"
+              :disabled="!adaptForm.title || !adaptForm.content || adaptForm.platforms.length === 0 || adaptLoading"
+              class="w-full mt-4 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 text-white rounded-lg py-2.5 text-sm font-medium">
+              {{ adaptLoading ? '⏳ AI 差异化适配中...' : `🔄 一键适配 ${adaptForm.platforms.length || '所选'} 个平台` }}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div v-if="Object.keys(adaptResults).length === 0" class="bg-white rounded-xl p-8 shadow text-center text-gray-400">
+            <div class="text-4xl mb-3">🔄</div>
+            <div class="font-medium mb-2">选择平台后点击适配</div>
+            <div class="text-sm">AI 将根据每个平台的独特文化和用户习惯，生成完全不同风格的内容版本</div>
+            <div class="mt-3 text-xs text-gray-300">知乎版 ≠ 小红书版 ≠ 微博版 ≠ 抖音版</div>
+          </div>
+          <div v-else class="space-y-4">
+            <div v-for="(result, platform) in adaptResults" :key="platform"
+              class="bg-white rounded-xl p-5 shadow">
+              <div class="flex items-center justify-between mb-2">
+                <div>
+                  <h3 class="font-bold text-gray-700">{{ result.platform_name || platform }}</h3>
+                  <div v-if="platformStyles[platform]" class="text-xs text-indigo-500 mt-0.5">
+                    {{ platformStyles[platform].tone }}
+                  </div>
+                </div>
+                <div class="flex space-x-2">
+                  <button @click="copyToClipboard(result.content)"
+                    class="text-xs text-indigo-600 hover:text-indigo-800">复制</button>
+                  <button @click="saveAdaptedArticle(platform, result)"
+                    class="text-xs text-green-600 hover:text-green-800">保存草稿</button>
+                </div>
+              </div>
+              <!-- 差异化特征标签 -->
+              <div v-if="platformStyles[platform]?.special_rules?.length" class="flex flex-wrap gap-1 mb-2">
+                <span v-for="rule in platformStyles[platform].special_rules.slice(0,3)" :key="rule"
+                  class="diff-tag bg-purple-50 text-purple-600">{{ rule }}</span>
+              </div>
+              <div v-if="result.error" class="text-red-500 text-sm">{{ result.error }}</div>
+              <div v-else>
+                <div class="text-xs text-gray-500 mb-2">字数：{{ result.content?.length || 0 }}</div>
+                <div class="text-sm text-gray-700 bg-gray-50 p-3 rounded max-h-48 overflow-auto whitespace-pre-wrap">
+                  {{ result.content?.substring(0, 400) }}{{ result.content?.length > 400 ? '...' : '' }}
+                </div>
+                <div v-if="result.tags?.length" class="mt-2 flex flex-wrap gap-1">
+                  <span v-for="tag in result.tags" :key="tag"
+                    class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">#{{ tag }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 内容审核 ===== -->
+    <div v-if="activeTab === 'moderate'">
+      <h2 class="text-xl font-bold text-gray-800 mb-1">🛡️ 内容合规审核</h2>
+      <p class="text-sm text-gray-500 mb-4">三层流水线：本地敏感词 → Qwen 语义审核 → AI 自动改写修复</p>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- 左侧：输入 -->
+        <div class="space-y-4">
+          <div class="bg-white rounded-xl p-5 shadow">
+            <h3 class="font-bold text-gray-700 mb-3">待审核内容</h3>
+            <input v-model="moderateForm.title" type="text" placeholder="文章标题..."
+              class="w-full border rounded-lg p-3 text-sm mb-3 focus:ring-2 focus:ring-indigo-300 outline-none" />
+            <textarea v-model="moderateForm.content" rows="12"
+              placeholder="粘贴需要审核的文章内容..."
+              class="w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-300 outline-none"></textarea>
+          </div>
+
+          <div class="bg-white rounded-xl p-5 shadow">
+            <h3 class="font-bold text-gray-700 mb-3">目标平台（影响审核规则）</h3>
+            <div class="grid grid-cols-3 gap-2 mb-4">
+              <div v-for="(style, key) in platformStyles" :key="key"
+                @click="toggleModeratePlatform(key)"
+                :class="['platform-card rounded-lg p-2 text-center text-xs',
+                  moderateForm.platforms.includes(key) ? 'selected' : 'bg-gray-50']">
+                {{ style.name }}
+              </div>
+            </div>
+            <label class="flex items-center space-x-2 text-sm text-gray-600 mb-4">
+              <input v-model="moderateForm.auto_rewrite" type="checkbox" class="rounded" />
+              <span>发现问题时自动 AI 改写修复（Layer 3）</span>
+            </label>
+            <div class="flex space-x-2">
+              <button @click="quickCheck"
+                :disabled="!moderateForm.content || moderateLoading"
+                class="flex-1 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-300 text-white rounded-lg py-2.5 text-sm font-medium">
+                {{ moderateLoading && moderateAction === 'quick' ? '⏳ 检测中...' : '⚡ 快速敏感词检测' }}
+              </button>
+              <button @click="fullModerate"
+                :disabled="!moderateForm.title || !moderateForm.content || moderateLoading"
+                class="flex-1 bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 text-white rounded-lg py-2.5 text-sm font-medium">
+                {{ moderateLoading && moderateAction === 'full' ? '⏳ 审核中...' : '🛡️ 完整三层审核' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- 审核说明 -->
+          <div class="bg-blue-50 rounded-xl p-4 border border-blue-100">
+            <h4 class="font-medium text-blue-800 text-sm mb-2">审核能力说明</h4>
+            <div class="space-y-2 text-xs text-blue-700">
+              <div class="flex items-start space-x-2">
+                <span class="layer-dot layer-pass mt-1 flex-shrink-0"></span>
+                <div><strong>Layer 1</strong> 本地敏感词：金融违规、营销违规、平台禁词，毫秒级响应</div>
+              </div>
+              <div class="flex items-start space-x-2">
+                <span class="layer-dot mt-1 flex-shrink-0"
+                  :class="moderationEnabled ? 'layer-pass' : 'layer-skip'"></span>
+                <div>
+                  <strong>Layer 2</strong> Qwen 语义审核：政治敏感、金融违规、不实信息、版权风险
+                  <span v-if="!moderationEnabled" class="text-orange-600">（需配置 DASHSCOPE_API_KEY）</span>
+                </div>
+              </div>
+              <div class="flex items-start space-x-2">
+                <span class="layer-dot layer-pass mt-1 flex-shrink-0"></span>
+                <div><strong>Layer 3</strong> AI 改写：综合问题一次性修复，保持原文风格</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧：审核结果 -->
+        <div>
+          <div v-if="!moderateResult" class="bg-white rounded-xl p-8 shadow text-center text-gray-400">
+            <div class="text-4xl mb-3">🛡️</div>
+            <div class="font-medium mb-2">等待审核</div>
+            <div class="text-sm">输入内容后点击审核按钮，系统将自动检测违规内容并给出修复建议</div>
+          </div>
+
+          <div v-else class="space-y-4">
+            <!-- 总体结论 -->
+            <div class="bg-white rounded-xl p-5 shadow border-l-4"
+              :class="moderateResult.final?.passed ? 'border-green-400' : 'border-red-400'">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="font-bold text-gray-700">审核结论</h3>
+                <div class="flex items-center space-x-3">
+                  <div class="text-center">
+                    <div class="text-3xl font-bold"
+                      :class="(moderateResult.layer2?.score || 0) >= 80 ? 'text-green-600' : (moderateResult.layer2?.score || 0) >= 60 ? 'text-yellow-600' : 'text-red-600'">
+                      {{ moderateResult.layer2?.score || (moderateResult.layer2?.skipped ? '-' : '?') }}
+                    </div>
+                    <div class="text-xs text-gray-400">合规分</div>
+                  </div>
+                  <span :class="['status-badge text-sm', moderateResult.final?.passed ? 'status-success' : 'status-failed']">
+                    {{ moderateResult.final?.passed ? '✅ 通过' : '❌ 不通过' }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- 评分进度条 -->
+              <div v-if="moderateResult.layer2?.score" class="mb-3">
+                <div class="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>合规评分</span>
+                  <span>{{ moderateResult.layer2.score }}/100</span>
+                </div>
+                <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div class="h-full rounded-full progress-bar"
+                    :class="moderateResult.layer2.score >= 80 ? 'bg-green-400' : moderateResult.layer2.score >= 60 ? 'bg-yellow-400' : 'bg-red-400'"
+                    :style="`width: ${moderateResult.layer2.score}%`"></div>
+                </div>
+              </div>
+
+              <div v-if="moderateResult.layer2?.summary" class="text-sm text-gray-600 bg-gray-50 rounded p-2">
+                {{ moderateResult.layer2.summary }}
+              </div>
+              <div v-if="moderateResult.final?.requires_manual_review" class="mt-2 text-xs text-yellow-700 bg-yellow-50 rounded p-2">
+                ⚠️ 建议人工复核后再发布
+              </div>
+            </div>
+
+            <!-- Layer 1 结果 -->
+            <div class="bg-white rounded-xl p-4 shadow">
+              <h4 class="font-medium text-gray-700 mb-2 flex items-center">
+                <span class="layer-dot mr-2"
+                  :class="moderateResult.layer1?.has_blocked_words ? 'layer-fail' : moderateResult.layer1?.word_count > 0 ? 'layer-warn' : 'layer-pass'"></span>
+                Layer 1 · 敏感词检测
+                <span class="ml-auto text-xs text-gray-400">{{ moderateResult.layer1?.word_count || 0 }} 个标记</span>
+              </h4>
+              <div v-if="moderateResult.layer1?.word_count === 0" class="text-xs text-green-600">✅ 未发现敏感词</div>
+              <div v-else class="space-y-1">
+                <div v-for="word in moderateResult.layer1?.sensitive_words" :key="word.word"
+                  class="flex items-center justify-between text-xs p-1.5 rounded"
+                  :class="word.severity === 'block' ? 'bg-red-50' : 'bg-yellow-50'">
+                  <div>
+                    <span class="font-medium" :class="word.severity === 'block' ? 'text-red-700' : 'text-yellow-700'">
+                      「{{ word.word }}」
+                    </span>
+                    <span class="text-gray-400 ml-1">{{ word.severity === 'block' ? '禁用词' : '警告词' }}</span>
+                  </div>
+                  <span v-if="word.replacement" class="text-green-600">→ {{ word.replacement }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Layer 2 结果 -->
+            <div class="bg-white rounded-xl p-4 shadow">
+              <h4 class="font-medium text-gray-700 mb-2 flex items-center">
+                <span class="layer-dot mr-2"
+                  :class="moderateResult.layer2?.skipped ? 'layer-skip' : moderateResult.layer2?.passed ? 'layer-pass' : 'layer-fail'"></span>
+                Layer 2 · Qwen 语义审核
+                <span v-if="moderateResult.layer2?.skipped" class="ml-2 text-xs text-gray-400">（未配置 Key，已跳过）</span>
+              </h4>
+              <div v-if="moderateResult.layer2?.issues?.length === 0" class="text-xs text-green-600">✅ 未发现语义违规</div>
+              <div v-else class="space-y-1.5">
+                <div v-for="(issue, idx) in moderateResult.layer2?.issues" :key="idx"
+                  class="text-xs p-2 rounded border-l-2"
+                  :class="issue.severity === 'high' ? 'border-red-400 bg-red-50' : issue.severity === 'medium' ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300 bg-gray-50'">
+                  <div class="font-medium text-gray-700">{{ issue.description }}</div>
+                  <div v-if="issue.suggestion" class="text-gray-500 mt-0.5">建议：{{ issue.suggestion }}</div>
+                </div>
+              </div>
+              <!-- 各平台建议 -->
+              <div v-if="Object.keys(moderateResult.layer2?.platform_suggestions || {}).length" class="mt-2">
+                <div class="text-xs text-gray-500 mb-1">各平台可发布状态：</div>
+                <div class="flex flex-wrap gap-1">
+                  <span v-for="(ok, plat) in moderateResult.layer2.platform_suggestions" :key="plat"
+                    :class="['diff-tag', ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600']">
+                    {{ ok ? '✓' : '✗' }} {{ getPlatformName(plat) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Layer 3 改写结果 -->
+            <div v-if="moderateResult.layer3?.was_rewritten" class="bg-white rounded-xl p-4 shadow">
+              <h4 class="font-medium text-gray-700 mb-2 flex items-center">
+                <span class="layer-dot layer-pass mr-2"></span>
+                Layer 3 · AI 合规改写
+                <span class="ml-2 text-xs text-blue-600">✏️ 已自动修复</span>
+              </h4>
+              <div class="text-xs text-gray-600 bg-blue-50 rounded p-3 max-h-48 overflow-auto whitespace-pre-wrap">
+                {{ moderateResult.final?.content }}
+              </div>
+              <button @click="copyToClipboard(moderateResult.final?.content)"
+                class="mt-2 text-xs text-indigo-600 hover:text-indigo-800">复制改写后内容</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== 平台发布 ===== -->
     <div v-if="activeTab === 'publish'">
       <h2 class="text-xl font-bold text-gray-800 mb-4">🌐 平台管理 & 发布记录</h2>
-      <!-- 平台状态 -->
       <div class="bg-white rounded-xl p-5 shadow mb-6">
         <h3 class="font-bold text-gray-700 mb-4">平台账号状态</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -360,25 +845,18 @@
               <div v-else>
                 <span class="status-badge status-draft">未登录</span>
                 <a :href="p.login_url" target="_blank"
-                  class="block text-xs text-indigo-600 hover:text-indigo-800 mt-1">
-                  → 去登录
-                </a>
+                  class="block text-xs text-indigo-600 hover:text-indigo-800 mt-1">→ 去登录</a>
               </div>
             </div>
           </div>
         </div>
         <div class="mt-4 p-4 bg-blue-50 rounded-lg text-sm text-blue-700">
-          <strong>💡 登录说明：</strong>点击"去登录"在浏览器中手动登录对应平台后，系统将自动保存 Cookie 用于后续自动发布。
-          首次使用需要手动登录一次，之后即可自动发布。
+          <strong>💡 登录说明：</strong>点击"去登录"在浏览器中手动登录对应平台后，系统将自动保存 Cookie 用于后续自动发布。首次使用需要手动登录一次，之后即可自动发布。
         </div>
       </div>
-
-      <!-- 发布记录 -->
       <div class="bg-white rounded-xl p-5 shadow">
         <h3 class="font-bold text-gray-700 mb-4">📋 发布任务记录</h3>
-        <div v-if="publishTasks.length === 0" class="text-center text-gray-400 py-8">
-          暂无发布记录
-        </div>
+        <div v-if="publishTasks.length === 0" class="text-center text-gray-400 py-8">暂无发布记录</div>
         <div v-else class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead class="bg-gray-50 text-xs text-gray-500">
@@ -400,9 +878,7 @@
                   </span>
                 </td>
                 <td class="px-3 py-2">
-                  <span :class="['status-badge', 'status-' + task.status]">
-                    {{ statusLabel(task.status) }}
-                  </span>
+                  <span :class="['status-badge', 'status-' + task.status]">{{ statusLabel(task.status) }}</span>
                 </td>
                 <td class="px-3 py-2 text-gray-400 text-xs">{{ formatDate(task.published_at || task.created_at) }}</td>
                 <td class="px-3 py-2 text-xs text-gray-500 max-w-xs truncate">
@@ -415,91 +891,82 @@
       </div>
     </div>
 
-    <!-- ===== 平台适配 ===== -->
-    <div v-if="activeTab === 'adapt'">
-      <h2 class="text-xl font-bold text-gray-800 mb-4">🔄 一键多平台适配</h2>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div class="space-y-4">
-          <div class="bg-white rounded-xl p-5 shadow">
-            <h3 class="font-bold text-gray-700 mb-3">原始内容</h3>
-            <input v-model="adaptForm.title" type="text" placeholder="文章标题..."
-              class="w-full border rounded-lg p-3 text-sm mb-3 focus:ring-2 focus:ring-indigo-300 outline-none" />
-            <textarea v-model="adaptForm.content" rows="10"
-              placeholder="粘贴原始文章内容..."
-              class="w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-300 outline-none"></textarea>
-          </div>
-          <div class="bg-white rounded-xl p-5 shadow">
-            <h3 class="font-bold text-gray-700 mb-3">选择目标平台</h3>
-            <div class="grid grid-cols-2 gap-2">
-              <div v-for="(style, key) in platformStyles" :key="key"
-                @click="toggleAdaptPlatform(key)"
-                :class="['platform-card rounded-lg p-3 text-sm',
-                  adaptForm.platforms.includes(key) ? 'selected' : 'bg-gray-50']">
-                <div class="font-medium">{{ style.name }}</div>
-                <div class="text-xs text-gray-400">{{ style.max_length }}字以内</div>
-              </div>
+    <!-- ===== 设置 ===== -->
+    <div v-if="activeTab === 'settings'">
+      <h2 class="text-xl font-bold text-gray-800 mb-4">⚙️ AI 模型配置</h2>
+
+      <!-- 推荐配置说明 -->
+      <div class="bg-gradient-to-r from-green-50 to-blue-50 rounded-xl p-5 shadow mb-6 border border-green-100">
+        <h3 class="font-bold text-gray-700 mb-3">🏆 推荐配置方案（成本最优）</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-white rounded-lg p-4 border border-green-200">
+            <div class="flex items-center justify-between mb-2">
+              <div class="font-bold text-green-800">DeepSeek V3</div>
+              <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">内容生成</span>
             </div>
-            <button @click="adaptArticle"
-              :disabled="!adaptForm.title || !adaptForm.content || adaptForm.platforms.length === 0 || adaptLoading"
-              class="w-full mt-4 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 text-white rounded-lg py-2.5 text-sm font-medium">
-              {{ adaptLoading ? '⏳ 适配中...' : '🔄 一键适配所有平台' }}
-            </button>
+            <div class="text-xs text-gray-600 space-y-1">
+              <div>💰 比 GPT-4o 便宜约 <strong>30 倍</strong></div>
+              <div>🇨🇳 中文内容创作效果极佳</div>
+              <div>🔑 环境变量：<code class="bg-gray-100 px-1 rounded">DEEPSEEK_API_KEY</code></div>
+              <div>🔗 <a href="https://platform.deepseek.com/api_keys" target="_blank" class="text-indigo-600 hover:underline">获取 API Key →</a></div>
+            </div>
+          </div>
+          <div class="bg-white rounded-lg p-4 border border-blue-200">
+            <div class="flex items-center justify-between mb-2">
+              <div class="font-bold text-blue-800">通义千问 qwen-plus</div>
+              <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">内容审核</span>
+            </div>
+            <div class="text-xs text-gray-600 space-y-1">
+              <div>🛡️ 同时接入阿里云 CIP 内容安全</div>
+              <div>📊 输出合规评分 + 各平台可发布建议</div>
+              <div>🔑 环境变量：<code class="bg-gray-100 px-1 rounded">DASHSCOPE_API_KEY</code></div>
+              <div>🔗 <a href="https://dashscope.console.aliyun.com/apiKey" target="_blank" class="text-indigo-600 hover:underline">获取 API Key →</a></div>
+            </div>
           </div>
         </div>
-        <div>
-          <div v-if="Object.keys(adaptResults).length === 0" class="bg-white rounded-xl p-8 shadow text-center text-gray-400">
-            <div class="text-4xl mb-3">🔄</div>
-            <div>选择平台后点击适配，AI 将自动为每个平台调整内容风格</div>
-          </div>
-          <div v-else class="space-y-4">
-            <div v-for="(result, platform) in adaptResults" :key="platform"
-              class="bg-white rounded-xl p-5 shadow">
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="font-bold text-gray-700">{{ result.platform_name || platform }}</h3>
-                <div class="flex space-x-2">
-                  <button @click="copyToClipboard(result.content)"
-                    class="text-xs text-indigo-600 hover:text-indigo-800">复制</button>
-                  <button @click="saveAdaptedArticle(platform, result)"
-                    class="text-xs text-green-600 hover:text-green-800">保存草稿</button>
-                </div>
-              </div>
-              <div v-if="result.error" class="text-red-500 text-sm">{{ result.error }}</div>
-              <div v-else>
-                <div class="text-xs text-gray-500 mb-2">字数：{{ result.content?.length || 0 }}</div>
-                <div class="text-sm text-gray-700 bg-gray-50 p-3 rounded max-h-48 overflow-auto">
-                  {{ result.content?.substring(0, 300) }}...
-                </div>
-                <div v-if="result.tags?.length" class="mt-2 flex flex-wrap gap-1">
-                  <span v-for="tag in result.tags" :key="tag"
-                    class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">#{{ tag }}</span>
-                </div>
-              </div>
+        <div class="mt-3 text-xs text-gray-500 bg-white rounded p-2 border">
+          💡 两个 Key 都配置时效果最佳：DeepSeek 负责生成，Qwen 负责审核，分工明确。只配置其中一个也能正常运行。
+        </div>
+      </div>
+
+      <!-- 其他可用模型 -->
+      <div class="bg-white rounded-xl p-5 shadow mb-6">
+        <h3 class="font-bold text-gray-700 mb-3">其他可用模型（按优先级自动检测）</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div v-for="(provider, key) in modelInfo.providers" :key="key"
+            class="p-3 rounded-lg border"
+            :class="provider.configured ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'">
+            <div class="flex items-center justify-between mb-1">
+              <div class="font-medium text-sm">{{ provider.name }}</div>
+              <span v-if="provider.configured" class="text-xs text-green-600">✅ 已配置</span>
+              <span v-else class="text-xs text-gray-400">未配置</span>
             </div>
+            <div class="text-xs text-gray-500">{{ provider.default_model }}</div>
+            <div class="text-xs text-indigo-600 mt-1">{{ provider.price_note }}</div>
+            <div class="text-xs text-gray-400 mt-0.5">{{ provider.env_key }}</div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- ===== AI 配置 ===== -->
-    <div v-if="activeTab === 'settings'">
-      <h2 class="text-xl font-bold text-gray-800 mb-4">⚙️ AI 模型配置</h2>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div class="bg-white rounded-xl p-5 shadow">
-          <h3 class="font-bold text-gray-700 mb-4">添加 AI 模型</h3>
+          <h3 class="font-bold text-gray-700 mb-4">手动添加 AI 配置</h3>
           <div class="space-y-3">
             <div>
               <label class="text-sm text-gray-600 block mb-1">配置名称</label>
-              <input v-model="aiConfigForm.name" type="text" placeholder="如：我的 GPT-4"
+              <input v-model="aiConfigForm.name" type="text" placeholder="如：我的 DeepSeek"
                 class="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-300 outline-none" />
             </div>
             <div>
               <label class="text-sm text-gray-600 block mb-1">提供商</label>
               <select v-model="aiConfigForm.provider"
                 class="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-300 outline-none">
-                <option value="openai">OpenAI / 兼容接口</option>
-                <option value="baidu">百度文心一言</option>
-                <option value="alibaba">阿里通义千问</option>
-                <option value="tencent">腾讯混元</option>
+                <option value="deepseek">DeepSeek（推荐，最便宜）</option>
+                <option value="alibaba">阿里通义千问（审核推荐）</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="groq">Groq（有免费额度）</option>
+                <option value="openai">OpenAI（价格较高）</option>
+                <option value="custom">自定义 OpenAI 兼容接口</option>
               </select>
             </div>
             <div>
@@ -508,13 +975,13 @@
                 class="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-300 outline-none" />
             </div>
             <div>
-              <label class="text-sm text-gray-600 block mb-1">API Base URL（可选，用于自定义接口）</label>
-              <input v-model="aiConfigForm.api_base" type="text" placeholder="https://api.openai.com/v1"
+              <label class="text-sm text-gray-600 block mb-1">API Base URL（自定义接口时填写）</label>
+              <input v-model="aiConfigForm.api_base" type="text" placeholder="https://api.deepseek.com/v1"
                 class="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-300 outline-none" />
             </div>
             <div>
               <label class="text-sm text-gray-600 block mb-1">模型名称</label>
-              <input v-model="aiConfigForm.model_name" type="text" placeholder="gpt-4.1-mini"
+              <input v-model="aiConfigForm.model_name" type="text" placeholder="deepseek-chat"
                 class="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-300 outline-none" />
             </div>
             <label class="flex items-center space-x-2 text-sm text-gray-600">
@@ -532,8 +999,9 @@
           <h3 class="font-bold text-gray-700 mb-4">已保存的配置</h3>
           <div v-if="aiConfigs.length === 0" class="text-center text-gray-400 py-8">
             <div class="text-3xl mb-2">🤖</div>
-            <div class="text-sm">暂无配置，系统将使用内置默认模型</div>
-            <div class="text-xs text-gray-300 mt-1">（已预配置 gpt-4.1-mini）</div>
+            <div class="text-sm">暂无手动配置</div>
+            <div class="text-xs text-gray-300 mt-1">系统已通过环境变量自动检测可用模型</div>
+            <div class="text-xs text-indigo-400 mt-1">当前：{{ modelInfo.current?.name || '加载中...' }}</div>
           </div>
           <div v-else class="space-y-3">
             <div v-for="config in aiConfigs" :key="config.id"
@@ -606,15 +1074,10 @@
 <script>
 const { createApp, ref, reactive, onMounted, computed } = Vue;
 
-// 动态检测 API 地址
 const API_BASE = (() => {
   const host = window.location.hostname;
-  if (host === 'localhost' || host === '127.0.0.1') {
-    return 'http://localhost:8001';
-  }
-  // 公网访问时，将端口 8080 替换为 8001
-  const apiUrl = window.location.origin.replace('8080-', '8001-');
-  return apiUrl;
+  if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:8001';
+  return window.location.origin.replace('8080-', '8001-');
 })();
 
 createApp({
@@ -625,6 +1088,7 @@ createApp({
       { key: 'create', label: 'AI 创作', icon: '✍️' },
       { key: 'articles', label: '文章库', icon: '📚' },
       { key: 'adapt', label: '多平台适配', icon: '🔄' },
+      { key: 'moderate', label: '内容审核', icon: '🛡️' },
       { key: 'publish', label: '发布管理', icon: '🌐' },
       { key: 'settings', label: '设置', icon: '⚙️' },
     ];
@@ -636,6 +1100,8 @@ createApp({
     const recentTasks = ref([]);
     const aiConfigs = ref([]);
     const platformStyles = ref({});
+    const modelInfo = ref({ current: null, providers: {} });
+    const moderationEnabled = ref(false);
 
     const aiLoading = ref(false);
     const currentAction = ref('');
@@ -649,6 +1115,12 @@ createApp({
     const generatedOutline = ref('');
     const hotTopics = ref([]);
     const adaptResults = ref({});
+    const lastModerationResult = ref(null);
+
+    // 审核页面状态
+    const moderateResult = ref(null);
+    const moderateLoading = ref(false);
+    const moderateAction = ref('');
 
     const createForm = reactive({
       topic: '',
@@ -657,10 +1129,7 @@ createApp({
       selectedTitle: '',
     });
 
-    const editor = reactive({
-      title: '',
-      content: '',
-    });
+    const editor = reactive({ title: '', content: '' });
 
     const adaptForm = reactive({
       title: '',
@@ -668,16 +1137,21 @@ createApp({
       platforms: [],
     });
 
-    const publishForm = reactive({
+    const publishForm = reactive({ platforms: [] });
+
+    const moderateForm = reactive({
+      title: '',
+      content: '',
       platforms: [],
+      auto_rewrite: true,
     });
 
     const aiConfigForm = reactive({
       name: '',
-      provider: 'openai',
+      provider: 'deepseek',
       api_key: '',
       api_base: '',
-      model_name: 'gpt-4.1-mini',
+      model_name: 'deepseek-chat',
       is_default: false,
     });
 
@@ -687,7 +1161,7 @@ createApp({
       toast.message = message;
       toast.type = type;
       toast.show = true;
-      setTimeout(() => { toast.show = false; }, 3000);
+      setTimeout(() => { toast.show = false; }, 3500);
     }
 
     async function fetchAPI(path, options = {}) {
@@ -709,9 +1183,17 @@ createApp({
         stats.value = statsData;
         platforms.value = platformsData.platforms || [];
         recentTasks.value = tasksData.tasks || [];
-      } catch (e) {
-        console.error('加载看板失败', e);
-      }
+      } catch (e) { console.error('加载看板失败', e); }
+    }
+
+    async function loadModelInfo() {
+      try {
+        const data = await fetchAPI('/api/model-info');
+        modelInfo.value = data;
+        // 检测 Qwen 审核是否可用
+        const dashscope = data.providers?.dashscope || data.providers?.alibaba;
+        moderationEnabled.value = !!(dashscope?.configured);
+      } catch (e) { console.error('加载模型信息失败', e); }
     }
 
     async function loadArticles() {
@@ -755,9 +1237,7 @@ createApp({
         showToast(`生成了 ${data.titles?.length || 0} 个标题候选`);
       } catch (e) {
         showToast('生成失败：' + e.message, 'error');
-      } finally {
-        aiLoading.value = false;
-      }
+      } finally { aiLoading.value = false; }
     }
 
     async function generateOutline() {
@@ -773,9 +1253,7 @@ createApp({
         showToast('大纲生成成功');
       } catch (e) {
         showToast('生成失败：' + e.message, 'error');
-      } finally {
-        aiLoading.value = false;
-      }
+      } finally { aiLoading.value = false; }
     }
 
     async function generateFullArticle() {
@@ -796,13 +1274,23 @@ createApp({
         editor.title = data.title;
         editor.content = data.content;
         currentArticleId.value = data.article_id;
-        showToast(`文章生成成功（${data.word_count} 字），已自动保存为草稿`);
+        // 展示审核报告
+        if (data.moderation) {
+          lastModerationResult.value = data.moderation;
+          const passed = data.moderation.final?.passed;
+          const rewritten = data.moderation.layer3?.was_rewritten;
+          const score = data.moderation.layer2?.score;
+          showToast(
+            `文章生成完成（${data.word_count} 字）· 合规分 ${score || '-'} · ${passed ? '审核通过' : '已自动修复'}${rewritten ? ' · 已改写' : ''}`,
+            passed ? 'success' : 'info'
+          );
+        } else {
+          showToast(`文章生成成功（${data.word_count} 字），已自动保存为草稿`);
+        }
         activeTab.value = 'create';
       } catch (e) {
         showToast('生成失败：' + e.message, 'error');
-      } finally {
-        aiLoading.value = false;
-      }
+      } finally { aiLoading.value = false; }
     }
 
     async function getHotTopics() {
@@ -817,9 +1305,7 @@ createApp({
         showToast(`获取到 ${data.topics?.length || 0} 个热门话题`);
       } catch (e) {
         showToast('获取失败：' + e.message, 'error');
-      } finally {
-        aiLoading.value = false;
-      }
+      } finally { aiLoading.value = false; }
     }
 
     function selectTitle(title) {
@@ -843,9 +1329,7 @@ createApp({
         }
         showToast('草稿保存成功');
         loadArticles();
-      } catch (e) {
-        showToast('保存失败', 'error');
-      }
+      } catch (e) { showToast('保存失败', 'error'); }
     }
 
     function openPublishModal() {
@@ -860,14 +1344,8 @@ createApp({
     }
 
     async function confirmPublish() {
-      if (!currentArticleId.value) {
-        // 先保存
-        await saveArticle();
-      }
-      if (!currentArticleId.value) {
-        showToast('请先保存文章', 'error');
-        return;
-      }
+      if (!currentArticleId.value) await saveArticle();
+      if (!currentArticleId.value) { showToast('请先保存文章', 'error'); return; }
       publishing.value = true;
       try {
         const data = await fetchAPI('/api/publish', {
@@ -880,9 +1358,7 @@ createApp({
         loadPublishTasks();
       } catch (e) {
         showToast('发布失败：' + e.message, 'error');
-      } finally {
-        publishing.value = false;
-      }
+      } finally { publishing.value = false; }
     }
 
     function editArticle(article) {
@@ -890,10 +1366,7 @@ createApp({
       editor.content = '';
       currentArticleId.value = article.id;
       activeTab.value = 'create';
-      // 加载完整内容
-      fetchAPI(`/api/articles/${article.id}`).then(data => {
-        editor.content = data.content || '';
-      });
+      fetchAPI(`/api/articles/${article.id}`).then(data => { editor.content = data.content || ''; });
     }
 
     function publishArticleById(article) {
@@ -911,15 +1384,19 @@ createApp({
         await fetchAPI(`/api/articles/${id}`, { method: 'DELETE' });
         showToast('删除成功');
         loadArticles();
-      } catch (e) {
-        showToast('删除失败', 'error');
-      }
+      } catch (e) { showToast('删除失败', 'error'); }
     }
 
     function toggleAdaptPlatform(platform) {
       const idx = adaptForm.platforms.indexOf(platform);
       if (idx > -1) adaptForm.platforms.splice(idx, 1);
       else adaptForm.platforms.push(platform);
+    }
+
+    function toggleModeratePlatform(platform) {
+      const idx = moderateForm.platforms.indexOf(platform);
+      if (idx > -1) moderateForm.platforms.splice(idx, 1);
+      else moderateForm.platforms.push(platform);
     }
 
     async function adaptArticle() {
@@ -931,12 +1408,68 @@ createApp({
           body: JSON.stringify({ title: adaptForm.title, content: adaptForm.content, platforms: adaptForm.platforms }),
         });
         adaptResults.value = data.results || {};
-        showToast(`已完成 ${Object.keys(data.results || {}).length} 个平台的内容适配`);
+        showToast(`已完成 ${Object.keys(data.results || {}).length} 个平台的差异化适配`);
       } catch (e) {
         showToast('适配失败：' + e.message, 'error');
-      } finally {
-        adaptLoading.value = false;
-      }
+      } finally { adaptLoading.value = false; }
+    }
+
+    async function quickCheck() {
+      if (!moderateForm.content) return;
+      moderateLoading.value = true;
+      moderateAction.value = 'quick';
+      moderateResult.value = null;
+      try {
+        const data = await fetchAPI('/api/moderate/quick', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: moderateForm.title || '（无标题）',
+            content: moderateForm.content,
+            platforms: moderateForm.platforms.length > 0 ? moderateForm.platforms : null,
+          }),
+        });
+        // 转换为完整结果格式以复用展示组件
+        moderateResult.value = {
+          layer1: {
+            sensitive_words: data.flagged_words || [],
+            has_blocked_words: !data.is_clean,
+            word_count: data.flagged_words?.length || 0,
+          },
+          layer2: { skipped: true, score: null, issues: [], summary: '快速检测模式，仅执行 Layer 1', platform_suggestions: {} },
+          layer3: { was_rewritten: false },
+          final: { passed: data.is_clean, requires_manual_review: false, content: '' },
+        };
+        showToast(data.is_clean ? '✅ 未发现敏感词' : `⚠️ 发现 ${data.block_count} 个违禁词、${data.warn_count} 个警告词`, data.is_clean ? 'success' : 'error');
+      } catch (e) {
+        showToast('检测失败：' + e.message, 'error');
+      } finally { moderateLoading.value = false; }
+    }
+
+    async function fullModerate() {
+      if (!moderateForm.title || !moderateForm.content) return;
+      moderateLoading.value = true;
+      moderateAction.value = 'full';
+      moderateResult.value = null;
+      try {
+        const data = await fetchAPI('/api/moderate', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: moderateForm.title,
+            content: moderateForm.content,
+            platforms: moderateForm.platforms.length > 0 ? moderateForm.platforms : null,
+            auto_rewrite: moderateForm.auto_rewrite,
+          }),
+        });
+        moderateResult.value = data;
+        const passed = data.final?.passed;
+        const score = data.layer2?.score;
+        showToast(
+          `审核完成 · 合规分 ${score || '-'} · ${passed ? '✅ 通过' : '❌ 不通过'}${data.layer3?.was_rewritten ? ' · 已自动改写' : ''}`,
+          passed ? 'success' : 'error'
+        );
+      } catch (e) {
+        showToast('审核失败：' + e.message, 'error');
+      } finally { moderateLoading.value = false; }
     }
 
     async function saveAdaptedArticle(platform, result) {
@@ -953,9 +1486,7 @@ createApp({
         });
         showToast(`${result.platform_name}版本已保存为草稿`);
         loadArticles();
-      } catch (e) {
-        showToast('保存失败', 'error');
-      }
+      } catch (e) { showToast('保存失败', 'error'); }
     }
 
     async function saveAIConfig() {
@@ -965,11 +1496,9 @@ createApp({
           body: JSON.stringify(aiConfigForm),
         });
         showToast('AI 配置保存成功');
-        Object.assign(aiConfigForm, { name: '', api_key: '', api_base: '', model_name: 'gpt-4.1-mini', is_default: false });
+        Object.assign(aiConfigForm, { name: '', api_key: '', api_base: '', model_name: 'deepseek-chat', is_default: false });
         loadAIConfigs();
-      } catch (e) {
-        showToast('保存失败', 'error');
-      }
+      } catch (e) { showToast('保存失败', 'error'); }
     }
 
     async function deleteAIConfig(id) {
@@ -977,12 +1506,11 @@ createApp({
         await fetchAPI(`/api/ai-configs/${id}`, { method: 'DELETE' });
         showToast('配置已删除');
         loadAIConfigs();
-      } catch (e) {
-        showToast('删除失败', 'error');
-      }
+      } catch (e) { showToast('删除失败', 'error'); }
     }
 
     function copyToClipboard(text) {
+      if (!text) return;
       navigator.clipboard.writeText(text).then(() => showToast('已复制到剪贴板'));
     }
 
@@ -1007,21 +1535,29 @@ createApp({
       return icons[platform] || '⚪';
     }
 
+    function getPlatformName(platform) {
+      const names = { zhihu: '知乎', wechat: '微信', baijia: '百家号', toutiao: '头条', xiaohongshu: '小红书', weibo: '微博', bilibili: 'B站', douyin: '抖音', general: '通用' };
+      return names[platform] || platform;
+    }
+
     onMounted(async () => {
-      await Promise.all([loadDashboard(), loadArticles(), loadAIConfigs(), loadPlatformStyles()]);
+      await Promise.all([loadDashboard(), loadArticles(), loadAIConfigs(), loadPlatformStyles(), loadModelInfo()]);
     });
 
     return {
       activeTab, tabs, stats, platforms, articles, publishTasks, recentTasks, aiConfigs, platformStyles,
+      modelInfo, moderationEnabled,
       aiLoading, currentAction, adaptLoading, publishing, editorMode, showPublishModal, currentArticleId,
-      generatedTitles, generatedOutline, hotTopics, adaptResults,
-      createForm, editor, adaptForm, publishForm, aiConfigForm, toast,
+      generatedTitles, generatedOutline, hotTopics, adaptResults, lastModerationResult,
+      moderateResult, moderateLoading, moderateAction,
+      createForm, editor, adaptForm, publishForm, moderateForm, aiConfigForm, toast,
       generateTitles, generateOutline, generateFullArticle, getHotTopics,
       selectTitle, saveArticle, openPublishModal, togglePublishPlatform, confirmPublish,
       editArticle, publishArticleById, deleteArticle,
       toggleAdaptPlatform, adaptArticle, saveAdaptedArticle,
+      toggleModeratePlatform, quickCheck, fullModerate,
       saveAIConfig, deleteAIConfig, copyToClipboard,
-      renderMarkdown, formatDate, statusLabel, getPlatformIcon,
+      renderMarkdown, formatDate, statusLabel, getPlatformIcon, getPlatformName,
       loadPublishTasks, loadArticles,
     };
   },
@@ -1030,16 +1566,11 @@ createApp({
     activeTab(tab) {
       if (tab === 'articles') this.loadArticles();
       if (tab === 'publish') this.loadPublishTasks();
-      if (tab === 'dashboard') {
-        this.loadDashboard?.();
-      }
     }
   },
 
   methods: {
-    async loadDashboard() {
-      // handled in setup
-    }
+    async loadDashboard() {}
   }
 }).mount('#app');
 </script>
