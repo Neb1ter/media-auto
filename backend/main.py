@@ -1227,7 +1227,7 @@ async def generate_image_v2(req: ImageGenerateV2Request, db: Session = Depends(g
 
     # ── 方案 0：Nano Banana（Gemini 图像生成，性价比最高）────────────────────
     gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    gemini_base = os.environ.get("GEMINI_IMAGE_BASE_URL", "").strip()
+    gemini_base = os.environ.get("GEMINI_IMAGE_API_BASE", "").strip()
     if gemini_key:
         try:
             import httpx as _httpx
@@ -1631,6 +1631,27 @@ async def save_ai_image_keys(req: AIImageKeyRequest):
         "message": f"已更新 {len(updated)} 项配置，立即生效（重启后需重新配置，建议写入 Railway 环境变量）",
     }
 
+
+@app.get("/api/debug/env-check")
+async def debug_env_check():
+    """调试接口：检查所有关键环境变量的配置状态（不暴露 Key 值）"""
+    keys_to_check = [
+        "DEEPSEEK_API_KEY", "DASHSCOPE_API_KEY", "GEMINI_API_KEY",
+        "GROQ_API_KEY", "OPENAI_API_KEY", "CLAUDE_API_KEY",
+        "GEMINI_IMAGE_API_KEY", "GEMINI_IMAGE_API_BASE",
+        "GEMINI_IMAGE_BASE_URL",  # 旧变量名，检查是否误用
+        "OPENAI_IMAGE_BASE_URL", "OPENAI_BASE_URL", "CLAUDE_API_BASE",
+    ]
+    result = {}
+    for k in keys_to_check:
+        val = os.environ.get(k, "")
+        result[k] = {
+            "configured": bool(val.strip()),
+            "length": len(val),
+            "has_leading_space": val != val.lstrip(),
+            "has_trailing_space": val != val.rstrip(),
+        }
+    return {"env_status": result, "note": "此接口仅用于调试，确认问题后可删除"}
 
 @app.get("/api/settings/ai-image-keys")
 async def get_ai_image_key_status():
