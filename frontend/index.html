@@ -8,7 +8,7 @@
   <script src="/assets/vue.global.js"></script>
   <script src="/assets/marked.min.js"></script>
   <style>
-    [v-cloak] { display: none; }
+    /* v-cloak 已移除，改用 JS 控制显示 */
     .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
     .card-hover { transition: all 0.2s ease; }
     .card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.15); }
@@ -52,8 +52,8 @@
     .progress-bar { animation: progress-fill 0.8s ease-out; }
   </style>
 </head>
-<body class="bg-gray-50 min-h-screen" v-cloak>
-<div id="app">
+<body class="bg-gray-50 min-h-screen">
+<div id="app" style="opacity:0;transition:opacity 0.2s">
 
   <!-- 顶部导航 -->
   <nav class="gradient-bg text-white shadow-lg sticky top-0 z-50">
@@ -1577,6 +1577,9 @@ createApp({
     async loadDashboard() {}
   }
 }).mount('#app');
+
+// Vue 挂载完成后显示页面（替代 v-cloak）
+document.getElementById('app').style.opacity = '1';
 </script>
 </body>
 </html>
