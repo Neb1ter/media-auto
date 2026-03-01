@@ -546,12 +546,8 @@ class AICreator:
             max_tokens=min(style['max_length'] * 2, 4000)
         )
 
-        # 生成摘要
-        summary_prompt = f"请用50字以内概括以下文章的核心内容：\n\n{content[:500]}..."
-        summary = self._chat(
-            [{"role": "user", "content": summary_prompt}],
-            temperature=0.5, max_tokens=100
-        )
+        # 摘要直接从正文截取，不再单独调用 AI（节省一次网络请求）
+        summary = content[:120].replace('\n', ' ').strip() + '...'
 
         return {
             "title": title,
@@ -562,6 +558,49 @@ class AICreator:
             "word_count": len(content),
             "model_used": f"{self.provider}/{self.model}"
         }
+
+    def generate_article_stream(self, title: str, outline: Optional[str] = None,
+                                platform: str = "general", keywords: Optional[List[str]] = None,
+                                user_requirement: Optional[str] = None):
+        """流式生成文章，返回 generator，逐块 yield 内容"""
+        style = PLATFORM_STYLES.get(platform, PLATFORM_STYLES["general"])
+        kw_str = f"\n关键词（请自然融入正文）：{', '.join(keywords)}" if keywords else ""
+        outline_str = f"\n参考大纲：\n{outline}" if outline else ""
+        template_str = f"\n推荐结构模板（可参考）：\n{style['structure_template']}" if style.get("structure_template") else ""
+        req_str = f"\n\n【核心传达目标 - 最高优先级】\n用户希望通过这篇文章让读者了解/感受到：\n{user_requirement}\n请确保文章的核心内容、论点和情感都围绕这个目标展开。" if user_requirement else ""
+
+        system_prompt = self._build_platform_system_prompt(platform)
+        user_prompt = f"""请根据以下信息，撰写一篇完整的{style['name']}平台文章。
+
+标题：{title}
+目标字数：{style['min_length']}-{style['max_length']} 字{kw_str}{outline_str}{template_str}{req_str}
+
+重要提醒：
+- 这是专门为【{style['name']}】平台创作的内容，请完全按照该平台的风格、语气和格式规范来写
+- 语气：{style['tone']}
+- 禁止使用：{', '.join(style.get('forbidden', [])) if style.get('forbidden') else '无特殊限制'}
+
+请直接输出文章正文（不要重复标题）："""
+
+        try:
+            client = self._get_client()
+            stream = client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.78,
+                max_tokens=min(style['max_length'] * 2, 4000),
+                stream=True,
+            )
+            for chunk in stream:
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    yield delta.content
+        except Exception as e:
+            logger.error(f"流式生成失败: {e}")
+            raise
 
     def rewrite_article(self, content: str, platform: str = "general",
                         style_hint: str = "") -> str:

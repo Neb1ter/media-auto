@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from loguru import logger
@@ -182,8 +182,8 @@ async def generate_outline(req: GenerateTitlesRequest, db: Session = Depends(get
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/ai/article")
-async def generate_article(req: GenerateArticleRequest, db: Session = Depends(get_db)):
-    """生成完整文章（含自动 Qwen 审核 + 合规改写）"""
+async def generate_article(req: GenerateArticleRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """生成完整文章（审核改为异步后台执行，不阻塞返回）"""
     try:
         creator = get_ai_creator(db)
         result = creator.generate_article(
@@ -191,44 +191,113 @@ async def generate_article(req: GenerateArticleRequest, db: Session = Depends(ge
             user_requirement=req.user_requirement
         )
 
-        # ── 自动审核流水线（生成后立即审核）──────────────────────────────────
-        logger.info(f"开始对生成内容进行审核: {result['title'][:30]}...")
-        mod_result = run_moderation_pipeline(
-            title=result["title"],
-            content=result["content"],
-            platforms=[req.platform] if req.platform != "general" else None,
-            auto_rewrite=True,
-        )
-        # 使用审核后的内容（可能已被合规改写）
-        final_content = mod_result.final_content or result["content"]
-        moderation_summary = mod_result.to_dict()
-
-        # 自动保存到草稿
+        # 先保存草稿，不等审核
         article = Article(
             title=result["title"],
-            content=final_content,
+            content=result["content"],
             summary=result.get("summary", ""),
             tags="",
             category=result.get("platform_name", ""),
             ai_generated=True,
-            word_count=len(final_content),
+            word_count=len(result["content"]),
             status="draft"
         )
         db.add(article)
         db.commit()
         db.refresh(article)
+        article_id = article.id
+
+        # 审核改为异步后台执行，不阻塞返回
+        def run_moderation_bg():
+            try:
+                mod_result = run_moderation_pipeline(
+                    title=result["title"],
+                    content=result["content"],
+                    platforms=[req.platform] if req.platform != "general" else None,
+                    auto_rewrite=True,
+                )
+                final_content = mod_result.final_content or result["content"]
+                # 审核完成后更新数据库
+                with SessionLocal() as session:
+                    art = session.get(Article, article_id)
+                    if art:
+                        art.content = final_content
+                        art.word_count = len(final_content)
+                        session.commit()
+                logger.info(f"异步审核完成: article_id={article_id}, score={mod_result.to_dict().get('layer2', {}).get('score', 'N/A')}")
+            except Exception as e:
+                logger.warning(f"异步审核失败（不影响主流程）: {e}")
+
+        background_tasks.add_task(run_moderation_bg)
 
         return {
             "success": True,
-            "article_id": article.id,
+            "article_id": article_id,
             **result,
-            "content": final_content,           # 覆盖为审核后内容
-            "word_count": len(final_content),
-            "moderation": moderation_summary,   # 附带审核报告
+            "moderation": {"status": "pending", "message": "审核正在后台运行，不影响内容使用"},
         }
     except Exception as e:
         logger.error(f"生成文章失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ai/article/stream")
+async def generate_article_stream(req: GenerateArticleRequest, db: Session = Depends(get_db)):
+    """流式生成文章（SSE），内容逐块返回，用户体验最好"""
+    import json
+    creator = get_ai_creator(db)
+
+    def event_stream():
+        full_content = []
+        try:
+            for chunk in creator.generate_article_stream(
+                req.title, req.outline, req.platform, req.keywords,
+                user_requirement=req.user_requirement
+            ):
+                full_content.append(chunk)
+                # SSE 格式：data: {...}\n\n
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+
+            # 流结束，发送完成事件（包含元数据）
+            total_content = ''.join(full_content)
+            style = PLATFORM_STYLES.get(req.platform, PLATFORM_STYLES["general"])
+            summary = total_content[:120].replace('\n', ' ').strip() + '...'
+
+            # 异步保存到数据库
+            try:
+                with SessionLocal() as session:
+                    article = Article(
+                        title=req.title,
+                        content=total_content,
+                        summary=summary,
+                        tags="",
+                        category=style["name"],
+                        ai_generated=True,
+                        word_count=len(total_content),
+                        status="draft"
+                    )
+                    session.add(article)
+                    session.commit()
+                    session.refresh(article)
+                    article_id = article.id
+            except Exception as e:
+                logger.error(f"保存文章失败: {e}")
+                article_id = None
+
+            yield f"data: {json.dumps({'type': 'done', 'article_id': article_id, 'title': req.title, 'summary': summary, 'word_count': len(total_content), 'platform': req.platform, 'platform_name': style['name']}, ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            logger.error(f"流式生成失败: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # 禁用 Nginx 缓冲
+        }
+    )
 
 @app.post("/api/ai/rewrite")
 async def rewrite_article(req: RewriteRequest, db: Session = Depends(get_db)):
