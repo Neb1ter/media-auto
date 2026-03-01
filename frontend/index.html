@@ -1616,14 +1616,10 @@
           </div>
         </div>
       </div>
-    </div>
-
-  </div>
-
-    <!-- 图片 API Key 配置 -->
-    <div class="bg-white rounded-xl p-5 shadow mt-6">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="font-bold text-gray-700">🖼️ 搜图 API Key 配置</h3>
+      <!-- 图片 API Key 配置 -->
+      <div class="bg-white rounded-xl p-5 shadow mt-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-gray-700">🖼️ 搜图 API Key 配置</h3>
         <span class="text-xs text-gray-400">配置后可搜索真实图片，未配置时使用演示图片</span>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -1721,7 +1717,7 @@
         <span v-if="logLastRefresh">最后刷新：{{ logLastRefresh }}</span>
       </div>
     </div>
-  </div>
+    </div>
 
 
   <!-- ===== 数据分析（DB-GPT 风格 NL→SQL）===== -->
@@ -2060,6 +2056,7 @@
       toast.type === 'success' ? 'bg-green-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-indigo-500']">
       {{ toast.message }}
     </div>
+  </div>
   </div>
 
 </div>
