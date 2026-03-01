@@ -703,3 +703,160 @@ class AICreator:
             "model": self.model,
             "price_note": provider_config.get("price_note", ""),
         }
+
+    def analyze_seo(self, title: str, content: str, platform: str = "zhihu") -> Dict:
+        """
+        针对知乎、百家号等 SEO 权重高的平台，分析文章并给出：
+        - 核心关键词建议（主词 + 长尾词）
+        - 关键词布局建议（标题/开头/小标题/结尾）
+        - 内链建议（可延伸的相关话题）
+        - 外链建议（权威来源类型）
+        - 整体 SEO 评分（0-100）
+        """
+        seo_platforms = {
+            "zhihu": "知乎（搜索引擎权重高，百度/必应收录快，问答形式利于长尾词覆盖）",
+            "baijia": "百家号（百度系平台，与百度搜索深度整合，SEO 权重极高）",
+            "toutiao": "今日头条（头条搜索收录，关键词密度影响推荐权重）",
+            "wechat": "微信公众号（微信搜一搜收录，关键词影响搜索排名）",
+            "bilibili": "B站专栏（B站搜索 + 百度收录，标题关键词权重高）",
+        }
+        platform_desc = seo_platforms.get(platform, f"{platform} 平台")
+
+        prompt = f"""你是一位专业的中文 SEO 内容顾问，请对以下文章进行深度 SEO 分析，输出 JSON 格式结果。
+
+平台：{platform_desc}
+文章标题：{title}
+文章内容（前500字）：{content[:500]}...
+
+请输出以下 JSON 结构（不要有任何其他文字）：
+{{
+  "seo_score": 75,
+  "score_breakdown": {{
+    "title_score": 80,
+    "keyword_density": 70,
+    "structure_score": 75,
+    "readability_score": 80
+  }},
+  "primary_keywords": ["主关键词1", "主关键词2", "主关键词3"],
+  "long_tail_keywords": ["长尾关键词1", "长尾关键词2", "长尾关键词3", "长尾关键词4", "长尾关键词5"],
+  "keyword_layout": {{
+    "title": "标题优化建议：xxx",
+    "opening": "开头段落建议：xxx（前100字内自然融入主关键词）",
+    "subheadings": "小标题建议：xxx（每个H2/H3包含关键词）",
+    "closing": "结尾段落建议：xxx（再次强化主关键词）"
+  }},
+  "internal_links": [
+    {{"topic": "可延伸话题1", "reason": "与本文关联性强，可引导读者深度阅读"}},
+    {{"topic": "可延伸话题2", "reason": "补充本文未覆盖的细节"}},
+    {{"topic": "可延伸话题3", "reason": "同系列内容，提升账号权重"}}
+  ],
+  "external_links": [
+    {{"type": "权威数据来源", "example": "如：国家统计局、艾瑞咨询报告", "reason": "增加文章可信度"}},
+    {{"type": "学术研究引用", "example": "如：相关领域论文或白皮书", "reason": "提升专业性"}},
+    {{"type": "官方文件/政策", "example": "如：相关政策文件或官方声明", "reason": "增加权威背书"}}
+  ],
+  "title_suggestions": ["优化标题方案1（含主关键词）", "优化标题方案2（长尾词版本）"],
+  "improvement_tips": ["改进建议1", "改进建议2", "改进建议3"]
+}}"""
+
+        try:
+            result = self._chat(
+                [{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=2000
+            )
+            # 提取 JSON
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', result)
+            if json_match:
+                return json.loads(json_match.group())
+            return {"error": "解析失败", "raw": result}
+        except Exception as e:
+            logger.error(f"SEO 分析失败: {e}")
+            return {"error": str(e)}
+
+    def generate_topic_suggestions(self, category: str, history_titles: List[str] = None,
+                                   platform: str = "general") -> Dict:
+        """
+        AI 选题助手：结合热点趋势 + 用户历史内容表现，推荐高潜力选题和爆款标题
+        - 热点话题追踪（当前行业热点）
+        - 基于历史内容分析（避免重复，找规律）
+        - 爆款标题生成（多种风格）
+        - 选题潜力评估
+        """
+        history_str = ""
+        if history_titles and len(history_titles) > 0:
+            history_str = f"\n\n用户历史创作标题（请分析规律，避免重复，找出未覆盖的角度）：\n" + "\n".join(
+                [f"- {t}" for t in history_titles[-20:]]  # 最近20篇
+            )
+
+        platform_name = PLATFORM_STYLES.get(platform, {}).get("name", platform)
+
+        prompt = f"""你是一位顶级的新媒体内容策略师，请为用户生成高潜力选题建议，输出 JSON 格式。
+
+创作领域：{category}
+目标平台：{platform_name}{history_str}
+
+请分析当前热点趋势，结合用户历史内容（如有），输出以下 JSON（不要有任何其他文字）：
+{{
+  "trend_analysis": "当前{category}领域的内容趋势分析（2-3句话）",
+  "hot_topics": [
+    {{
+      "topic": "热点话题1",
+      "heat_level": "高",
+      "reason": "为什么现在写这个话题潜力大",
+      "angle": "建议切入角度",
+      "titles": ["爆款标题方案A", "爆款标题方案B", "爆款标题方案C"]
+    }},
+    {{
+      "topic": "热点话题2",
+      "heat_level": "中",
+      "reason": "为什么现在写这个话题潜力大",
+      "angle": "建议切入角度",
+      "titles": ["爆款标题方案A", "爆款标题方案B", "爆款标题方案C"]
+    }},
+    {{
+      "topic": "热点话题3",
+      "heat_level": "高",
+      "reason": "为什么现在写这个话题潜力大",
+      "angle": "建议切入角度",
+      "titles": ["爆款标题方案A", "爆款标题方案B", "爆款标题方案C"]
+    }},
+    {{
+      "topic": "热点话题4",
+      "heat_level": "中",
+      "reason": "为什么现在写这个话题潜力大",
+      "angle": "建议切入角度",
+      "titles": ["爆款标题方案A", "爆款标题方案B", "爆款标题方案C"]
+    }},
+    {{
+      "topic": "热点话题5",
+      "heat_level": "新兴",
+      "reason": "为什么现在写这个话题潜力大",
+      "angle": "建议切入角度",
+      "titles": ["爆款标题方案A", "爆款标题方案B", "爆款标题方案C"]
+    }}
+  ],
+  "history_insights": "基于历史内容的分析和建议（如无历史内容则给出通用建议）",
+  "uncovered_angles": ["尚未覆盖的角度1", "尚未覆盖的角度2", "尚未覆盖的角度3"],
+  "content_calendar": [
+    {{"week": "本周", "topic": "建议本周写的话题", "reason": "时机最佳"}},
+    {{"week": "下周", "topic": "建议下周写的话题", "reason": "提前布局"}},
+    {{"week": "本月底", "topic": "建议月底写的话题", "reason": "长期价值"}}
+  ]
+}}"""
+
+        try:
+            result = self._chat(
+                [{"role": "user", "content": prompt}],
+                temperature=0.8,
+                max_tokens=3000
+            )
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', result)
+            if json_match:
+                return json.loads(json_match.group())
+            return {"error": "解析失败", "raw": result}
+        except Exception as e:
+            logger.error(f"选题助手生成失败: {e}")
+            return {"error": str(e)}

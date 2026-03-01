@@ -391,6 +391,11 @@
                   class="bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 px-4 py-1.5 rounded text-sm font-medium">
                   💾 保存草稿
                 </button>
+                <button @click="runSEOAnalysis"
+                  :disabled="!editor.title || !editor.content || seoLoading"
+                  class="bg-yellow-500 hover:bg-yellow-600 disabled:opacity-50 text-white px-4 py-1.5 rounded text-sm font-medium">
+                  {{ seoLoading ? '⏳ 分析中...' : '🔍 SEO 分析' }}
+                </button>
                 <button @click="openPublishModal"
                   :disabled="!editor.title || !editor.content"
                   class="bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white px-4 py-1.5 rounded text-sm font-medium">
@@ -513,6 +518,113 @@
                   class="flex-1 text-sm py-2 rounded-lg font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40">
                   ↩ 撤回
                 </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- SEO 分析结果面板 -->
+          <div v-if="seoResult" class="bg-white rounded-xl p-5 shadow border-l-4 border-yellow-400">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center space-x-2">
+                <h3 class="font-bold text-gray-700">🔍 SEO 分析报告</h3>
+                <span class="text-xs text-gray-400">针对知乎/百家号等高权重平台</span>
+              </div>
+              <div class="flex items-center space-x-2">
+                <div class="text-center">
+                  <div class="text-2xl font-bold"
+                    :class="seoResult.seo_score >= 80 ? 'text-green-600' : seoResult.seo_score >= 60 ? 'text-yellow-600' : 'text-red-600'">
+                    {{ seoResult.seo_score || '-' }}
+                  </div>
+                  <div class="text-xs text-gray-400">SEO分</div>
+                </div>
+                <button @click="seoExpanded = !seoExpanded" class="text-xs text-gray-400 hover:text-gray-600">
+                  {{ seoExpanded ? '▲ 收起' : '▼ 展开' }}
+                </button>
+              </div>
+            </div>
+
+            <!-- 分项得分 -->
+            <div class="grid grid-cols-4 gap-2 mb-3">
+              <div v-for="(score, key) in seoResult.score_breakdown" :key="key" class="text-center p-2 bg-gray-50 rounded">
+                <div class="text-sm font-bold" :class="score >= 80 ? 'text-green-600' : score >= 60 ? 'text-yellow-600' : 'text-red-600'">{{ score }}</div>
+                <div class="text-xs text-gray-400 mt-0.5">{{
+                  key === 'title_score' ? '标题' :
+                  key === 'keyword_density' ? '关键词' :
+                  key === 'structure_score' ? '结构' : '可读性'
+                }}</div>
+              </div>
+            </div>
+
+            <!-- 主关键词 + 长尾词 -->
+            <div class="mb-3">
+              <div class="text-xs font-medium text-gray-600 mb-1">🎯 主关键词</div>
+              <div class="flex flex-wrap gap-1">
+                <span v-for="kw in seoResult.primary_keywords" :key="kw"
+                  @click="createForm.keywords = createForm.keywords ? createForm.keywords + ',' + kw : kw"
+                  class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded cursor-pointer hover:bg-yellow-200">
+                  {{ kw }}
+                </span>
+              </div>
+              <div class="text-xs font-medium text-gray-600 mt-2 mb-1">🔗 长尾词</div>
+              <div class="flex flex-wrap gap-1">
+                <span v-for="kw in seoResult.long_tail_keywords" :key="kw"
+                  class="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
+                  {{ kw }}
+                </span>
+              </div>
+            </div>
+
+            <!-- 展开详情 -->
+            <div v-if="seoExpanded">
+              <!-- 关键词布局建议 -->
+              <div class="mb-3 p-3 bg-yellow-50 rounded-lg">
+                <div class="text-xs font-medium text-yellow-800 mb-2">📍 关键词布局建议</div>
+                <div v-for="(tip, key) in seoResult.keyword_layout" :key="key" class="text-xs text-gray-600 mb-1">
+                  <span class="font-medium text-yellow-700">{{
+                    key === 'title' ? '标题' :
+                    key === 'opening' ? '开头' :
+                    key === 'subheadings' ? '小标题' : '结尾'
+                  }}：</span> {{ tip }}
+                </div>
+              </div>
+
+              <!-- 内链建议 -->
+              <div class="mb-3">
+                <div class="text-xs font-medium text-gray-600 mb-2">🔗 内链建议（可延伸话题）</div>
+                <div v-for="link in seoResult.internal_links" :key="link.topic"
+                  class="flex items-start space-x-2 text-xs text-gray-600 mb-1 p-2 bg-gray-50 rounded">
+                  <span class="text-blue-500 font-medium whitespace-nowrap">→ {{ link.topic }}</span>
+                  <span class="text-gray-400">{{ link.reason }}</span>
+                </div>
+              </div>
+
+              <!-- 外链建议 -->
+              <div class="mb-3">
+                <div class="text-xs font-medium text-gray-600 mb-2">🌐 外链建议（权威来源类型）</div>
+                <div v-for="link in seoResult.external_links" :key="link.type"
+                  class="text-xs text-gray-600 mb-1 p-2 bg-gray-50 rounded">
+                  <span class="font-medium text-green-700">📌 {{ link.type }}</span>
+                  <span class="text-gray-400 ml-1">{{ link.example }}</span>
+                </div>
+              </div>
+
+              <!-- 标题优化方案 -->
+              <div class="mb-3">
+                <div class="text-xs font-medium text-gray-600 mb-2">✨ 标题优化方案</div>
+                <div v-for="(t, idx) in seoResult.title_suggestions" :key="idx"
+                  @click="editor.title = t"
+                  class="text-xs text-indigo-600 hover:text-indigo-800 cursor-pointer p-2 bg-indigo-50 rounded mb-1 hover:bg-indigo-100">
+                  📝 {{ t }}
+                </div>
+              </div>
+
+              <!-- 改进建议 -->
+              <div>
+                <div class="text-xs font-medium text-gray-600 mb-2">💡 改进建议</div>
+                <div v-for="(tip, idx) in seoResult.improvement_tips" :key="idx"
+                  class="text-xs text-gray-600 mb-1 flex items-start space-x-1">
+                  <span class="text-yellow-500">•</span><span>{{ tip }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -651,6 +763,156 @@
                 </div>
               </div>
               <p class="text-xs text-gray-400 mt-1">图片将随文章一起保存，可在发布时使用</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 选题助手 ===== -->
+    <div v-if="activeTab === 'topics'">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-xl font-bold text-gray-800">💡 AI 选题助手</h2>
+          <p class="text-sm text-gray-500 mt-0.5">结合热点趋势 + 历史内容表现，推荐高潜力选题和爆款标题</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-3 gap-6">
+        <!-- 左侧：输入区 -->
+        <div class="space-y-4">
+          <div class="bg-white rounded-xl p-5 shadow">
+            <h3 class="font-bold text-gray-700 mb-4">⚙️ 选题参数</h3>
+
+            <div class="mb-3">
+              <label class="block text-xs font-medium text-gray-600 mb-1">🏷️ 创作领域</label>
+              <input v-model="topicForm.category" type="text"
+                placeholder="如：科技、财经、健康、教育..."
+                class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 outline-none">
+            </div>
+
+            <div class="mb-3">
+              <label class="block text-xs font-medium text-gray-600 mb-1">📱 目标平台</label>
+              <select v-model="topicForm.platform"
+                class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 outline-none">
+                <option value="general">通用</option>
+                <option value="zhihu">知乎</option>
+                <option value="wechat">微信公众号</option>
+                <option value="xiaohongshu">小红书</option>
+                <option value="toutiao">今日头条</option>
+                <option value="baijia">百家号</option>
+                <option value="weibo">微博</option>
+                <option value="bilibili">B站专栏</option>
+                <option value="douyin">抖音图文</option>
+              </select>
+            </div>
+
+            <div class="mb-4">
+              <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" v-model="topicForm.include_history" class="rounded">
+                <span class="text-xs text-gray-600">📚 结合我的历史文章分析（避免重复选题）</span>
+              </label>
+            </div>
+
+            <button @click="getTopicSuggestions"
+              :disabled="topicLoading"
+              class="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 text-white rounded-lg py-2.5 text-sm font-medium">
+              {{ topicLoading ? '⏳ AI 分析中...' : '💡 生成选题建议' }}
+            </button>
+          </div>
+
+          <!-- 趋势分析 -->
+          <div v-if="topicResult?.data?.trend_analysis" class="bg-indigo-50 rounded-xl p-4">
+            <h4 class="text-xs font-bold text-indigo-700 mb-2">📈 当前趋势分析</h4>
+            <p class="text-xs text-indigo-600">{{ topicResult.data.trend_analysis }}</p>
+          </div>
+
+          <!-- 内容日历 -->
+          <div v-if="topicResult?.data?.content_calendar" class="bg-white rounded-xl p-4 shadow">
+            <h4 class="text-xs font-bold text-gray-700 mb-2">📅 内容日历建议</h4>
+            <div v-for="item in topicResult.data.content_calendar" :key="item.week"
+              class="flex items-start space-x-2 mb-2 text-xs">
+              <span class="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-medium whitespace-nowrap">{{ item.week }}</span>
+              <div>
+                <div class="font-medium text-gray-700">{{ item.topic }}</div>
+                <div class="text-gray-400">{{ item.reason }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧：选题建议列表 -->
+        <div class="col-span-2">
+          <!-- 空状态 -->
+          <div v-if="!topicResult" class="bg-white rounded-xl p-12 shadow text-center text-gray-400">
+            <div class="text-5xl mb-4">💡</div>
+            <div class="font-medium text-lg mb-2">输入创作领域，获取高潜力选题</div>
+            <div class="text-sm">AI 会分析当前热点趋势，结合你的历史内容表现，推荐最具爆款潜力的选题</div>
+            <div class="mt-3 text-xs text-gray-300">每个选题提供 3 个爆款标题方案</div>
+          </div>
+
+          <!-- 加载中 -->
+          <div v-else-if="topicLoading" class="bg-white rounded-xl p-12 shadow text-center">
+            <div class="text-4xl mb-4 animate-spin">⏳</div>
+            <div class="text-gray-500">AI 正在分析热点趋势和你的内容历史...</div>
+          </div>
+
+          <!-- 选题列表 -->
+          <div v-else-if="topicResult?.data?.hot_topics" class="space-y-4">
+            <!-- 历史分析提示 -->
+            <div v-if="topicResult.history_count > 0" class="bg-green-50 rounded-lg p-3 text-xs text-green-700">
+              📚 已结合你的 {{ topicResult.history_count }} 篇历史文章进行分析，推荐结果已避开重复选题
+            </div>
+
+            <div v-for="(topic, idx) in topicResult.data.hot_topics" :key="idx"
+              class="bg-white rounded-xl p-5 shadow hover:shadow-md transition-shadow">
+              <div class="flex items-start justify-between mb-3">
+                <div class="flex items-center space-x-2">
+                  <span class="text-lg font-bold text-gray-400">{{ String(idx + 1).padStart(2, '0') }}</span>
+                  <div>
+                    <h4 class="font-bold text-gray-800">{{ topic.topic }}</h4>
+                    <p class="text-xs text-gray-500 mt-0.5">{{ topic.reason }}</p>
+                  </div>
+                </div>
+                <span :class="[
+                  'text-xs px-2 py-1 rounded-full font-medium',
+                  topic.heat_level === '高' ? 'bg-red-100 text-red-600' :
+                  topic.heat_level === '新兴' ? 'bg-purple-100 text-purple-600' :
+                  'bg-yellow-100 text-yellow-600'
+                ]">
+                  {{ topic.heat_level === '高' ? '🔥 高热' : topic.heat_level === '新兴' ? '✨ 新兴' : '📊 中热' }}
+                </span>
+              </div>
+
+              <!-- 切入角度 -->
+              <div class="text-xs text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded mb-3">
+                💡 建议角度：{{ topic.angle }}
+              </div>
+
+              <!-- 爆款标题方案 -->
+              <div>
+                <div class="text-xs font-medium text-gray-500 mb-2">爆款标题方案（点击直接创作）：</div>
+                <div class="space-y-1">
+                  <div v-for="(title, tIdx) in topic.titles" :key="tIdx"
+                    @click="useTopicTitle(title, topic.topic)"
+                    class="text-sm text-gray-700 p-2 bg-gray-50 rounded cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 transition-colors flex items-center space-x-2">
+                    <span class="text-gray-300 text-xs">{{ ['A', 'B', 'C'][tIdx] }}</span>
+                    <span>{{ title }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 尚未覆盖的角度 -->
+            <div v-if="topicResult.data.uncovered_angles?.length" class="bg-white rounded-xl p-4 shadow">
+              <h4 class="text-sm font-bold text-gray-700 mb-2">🔍 尚未覆盖的角度</h4>
+              <div class="flex flex-wrap gap-2">
+                <span v-for="angle in topicResult.data.uncovered_angles" :key="angle"
+                  class="text-xs bg-orange-50 text-orange-700 px-3 py-1 rounded-full cursor-pointer hover:bg-orange-100"
+                  @click="topicForm.category = angle; getTopicSuggestions()">
+                  {{ angle }}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -1347,6 +1609,7 @@ createApp({
     const tabs = [
       { key: 'dashboard', label: '看板', icon: '📊' },
       { key: 'create', label: 'AI 创作', icon: '✍️' },
+      { key: 'topics', label: '选题助手', icon: '💡' },
       { key: 'articles', label: '文章库', icon: '📚' },
       { key: 'adapt', label: '多平台适配', icon: '🔄' },
       { key: 'moderate', label: '内容审核', icon: '🛡️' },
@@ -1375,8 +1638,18 @@ createApp({
     const generatedTitles = ref([]);
     const generatedOutline = ref('');
     const hotTopics = ref([]);
-    const adaptResults = ref({});
+    const adaptResults = ref([]);
     const lastModerationResult = ref(null);
+
+    // SEO 分析状态
+    const seoResult = ref(null);
+    const seoLoading = ref(false);
+    const seoExpanded = ref(false);
+
+    // 选题助手状态
+    const topicForm = reactive({ category: '科技', platform: 'general', include_history: true });
+    const topicResult = ref(null);
+    const topicLoading = ref(false);
 
     // 审核页面状态
     const moderateResult = ref(null);
@@ -1496,6 +1769,74 @@ createApp({
       editor.content = originalContent;
       aiSuggestionApplied.value = false;
       showToast('已撤回到原始文章');
+    }
+
+    // SEO 分析功能
+    async function runSEOAnalysis() {
+      if (!editor.title || !editor.content) return;
+      seoLoading.value = true;
+      seoResult.value = null;
+      seoExpanded.value = false;
+      try {
+        // 优先使用知乎或百家号平台进行 SEO 分析
+        const seoPlatform = ['zhihu', 'baijia', 'toutiao', 'wechat', 'bilibili'].includes(createForm.platform)
+          ? createForm.platform : 'zhihu';
+        const data = await fetchAPI('/api/ai/seo-analysis', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: editor.title,
+            content: editor.content,
+            platform: seoPlatform
+          })
+        });
+        if (data.success) {
+          seoResult.value = data.data;
+          seoExpanded.value = true;
+          showToast('🔍 SEO 分析完成！评分：' + (data.data.seo_score || '-'));
+        } else {
+          showToast('SEO 分析失败', 'error');
+        }
+      } catch (e) {
+        showToast('SEO 分析失败：' + e.message, 'error');
+      } finally {
+        seoLoading.value = false;
+      }
+    }
+
+    // 选题助手功能
+    async function getTopicSuggestions() {
+      if (!topicForm.category) { showToast('请输入创作领域', 'error'); return; }
+      topicLoading.value = true;
+      topicResult.value = null;
+      try {
+        const data = await fetchAPI('/api/ai/topic-suggestions', {
+          method: 'POST',
+          body: JSON.stringify({
+            category: topicForm.category,
+            platform: topicForm.platform,
+            include_history: topicForm.include_history
+          })
+        });
+        if (data.success) {
+          topicResult.value = data;
+          showToast('💡 已生成 ' + (data.data?.hot_topics?.length || 0) + ' 个选题建议');
+        } else {
+          showToast('选题生成失败', 'error');
+        }
+      } catch (e) {
+        showToast('选题生成失败：' + e.message, 'error');
+      } finally {
+        topicLoading.value = false;
+      }
+    }
+
+    function useTopicTitle(title, topic) {
+      // 点击选题标题后，跳转到 AI 创作页并填入
+      createForm.topic = topic;
+      createForm.selectedTitle = title;
+      editor.title = title;
+      activeTab.value = 'create';
+      showToast('已将标题填入创作区，可直接生成文章');
     }
 
     // 图片功能状态
@@ -2020,6 +2361,10 @@ createApp({
       // 记忆库
       showMemoryModal, newMemoryText, memories,
       addMemory, applyMemory, deleteMemory, clearAllMemories,
+      // SEO 分析
+      seoResult, seoLoading, seoExpanded, runSEOAnalysis,
+      // 选题助手
+      topicForm, topicResult, topicLoading, getTopicSuggestions, useTopicTitle,
     };
   },
 

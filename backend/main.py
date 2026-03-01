@@ -819,6 +819,67 @@ async def get_platform_styles():
     return {"styles": styles_info}
 
 
+# ===================== SEO 分析接口 =====================
+
+class SEOAnalysisRequest(BaseModel):
+    title: str
+    content: str
+    platform: str = "zhihu"  # 默认知乎，支持 zhihu/baijia/toutiao/wechat/bilibili
+
+
+@app.post("/api/ai/seo-analysis")
+async def seo_analysis(req: SEOAnalysisRequest, db: Session = Depends(get_db)):
+    """对文章进行 SEO 分析，返回关键词布局、内外链建议、标题优化方案"""
+    if not req.title or not req.content:
+        raise HTTPException(status_code=400, detail="标题和内容不能为空")
+    try:
+        creator = get_ai_creator(db)
+        result = creator.analyze_seo(req.title, req.content, req.platform)
+        return {"success": True, "data": result, "platform": req.platform}
+    except Exception as e:
+        logger.error(f"SEO 分析失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===================== 选题助手接口 =====================
+
+class TopicSuggestionRequest(BaseModel):
+    category: str = "科技"
+    platform: str = "general"
+    include_history: bool = True  # 是否结合用户历史文章分析
+
+
+@app.post("/api/ai/topic-suggestions")
+async def get_topic_suggestions(req: TopicSuggestionRequest, db: Session = Depends(get_db)):
+    """选题助手：结合热点趋势 + 用户历史内容，推荐高潜力选题和爆款标题"""
+    history_titles = []
+    if req.include_history:
+        # 获取用户最近20篇文章标题作为历史参考
+        try:
+            articles = db.query(Article).order_by(Article.created_at.desc()).limit(20).all()
+            history_titles = [a.title for a in articles if a.title]
+        except Exception:
+            history_titles = []
+
+    try:
+        creator = get_ai_creator(db)
+        result = creator.generate_topic_suggestions(
+            category=req.category,
+            history_titles=history_titles,
+            platform=req.platform
+        )
+        return {
+            "success": True,
+            "data": result,
+            "history_count": len(history_titles),
+            "category": req.category,
+            "platform": req.platform
+        }
+    except Exception as e:
+        logger.error(f"选题助手失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
