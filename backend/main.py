@@ -1279,9 +1279,9 @@ async def generate_image_v2(req: ImageGenerateV2Request, db: Session = Depends(g
         except Exception as e:
             logger.warning(f"Nano Banana（Gemini）失败: {e}")
 
-    # ── 方案 0b：Nano Banana via OpenAI-compatible API（中转站）────────────────
-    # 当 GEMINI_IMAGE_API_KEY 配置时，通过 OpenAI 兼容接口调用 Gemini 图像生成
-    gemini_compat_key = os.environ.get("GEMINI_IMAGE_API_KEY", "").strip()
+    # ── 方案 0b：Nano Banana via OpenAI-compatible API（中转站）────────────────────
+    # 优先用 GEMINI_IMAGE_API_KEY，没有则自动 fallback 到 GEMINI_API_KEY
+    gemini_compat_key = (os.environ.get("GEMINI_IMAGE_API_KEY") or os.environ.get("GEMINI_API_KEY") or "").strip()
     gemini_compat_base = os.environ.get("GEMINI_IMAGE_API_BASE", "").strip()
     if gemini_compat_key and gemini_compat_base:
         try:
@@ -1639,10 +1639,10 @@ async def get_ai_image_key_status():
         "success": True,
         "status": {
             "nano_banana": {
-                "configured": bool(os.environ.get("GEMINI_IMAGE_API_KEY")),
+                "configured": bool(os.environ.get("GEMINI_IMAGE_API_KEY") or os.environ.get("GEMINI_API_KEY")),
                 "name": "🍌 Nano Banana（Gemini）",
                 "description": "Google Gemini 图像生成，$0.02/张，性价比最高，推荐首选",
-                "env_key": "GEMINI_IMAGE_API_KEY",
+                "env_key": "GEMINI_IMAGE_API_KEY 或 GEMINI_API_KEY",
                 "base_url": os.environ.get("GEMINI_IMAGE_API_BASE", ""),
                 "base_url_env": "GEMINI_IMAGE_API_BASE",
                 "apply_url": "https://apiyi.com",
