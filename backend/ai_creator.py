@@ -1,6 +1,7 @@
 """
 AI 内容创作模块
-支持 OpenAI / 通义千问 / 文心一言 等多模型
+默认使用 DeepSeek V3（比 GPT-4o 便宜约 30 倍，中文效果极佳）
+同时支持 Gemini Flash、Groq、通义千问等低成本模型
 平台差异化：每个平台拥有独立的语气、结构、排版规则和专属格式模板
 """
 import os
@@ -11,7 +12,101 @@ from openai import OpenAI
 from loguru import logger
 
 
+# ===================== 模型提供商配置 =====================
+# 所有提供商均兼容 OpenAI SDK，只需切换 base_url 和 api_key
+
+MODEL_PROVIDERS = {
+    "deepseek": {
+        "name": "DeepSeek",
+        "base_url": "https://api.deepseek.com",
+        "env_key": "DEEPSEEK_API_KEY",
+        "default_model": "deepseek-chat",          # DeepSeek-V3，$0.28/1M input，$0.42/1M output
+        "models": {
+            "deepseek-chat": "DeepSeek V3（推荐，性价比最高）",
+            "deepseek-reasoner": "DeepSeek R1（推理增强版）",
+        },
+        "price_note": "输入 $0.28/1M tokens，输出 $0.42/1M tokens，比 GPT-4o 便宜约 30 倍"
+    },
+    "gemini": {
+        "name": "Google Gemini",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "env_key": "GEMINI_API_KEY",
+        "default_model": "gemini-2.0-flash",       # $0.075/1M input，$0.30/1M output
+        "models": {
+            "gemini-2.0-flash": "Gemini 2.0 Flash（速度快，价格低）",
+            "gemini-2.5-flash-preview-05-20": "Gemini 2.5 Flash（最新版）",
+        },
+        "price_note": "输入 $0.075/1M tokens，输出 $0.30/1M tokens"
+    },
+    "groq": {
+        "name": "Groq",
+        "base_url": "https://api.groq.com/openai/v1",
+        "env_key": "GROQ_API_KEY",
+        "default_model": "llama-3.3-70b-versatile",  # 有免费额度，速度极快
+        "models": {
+            "llama-3.3-70b-versatile": "Llama 3.3 70B（免费额度大，速度极快）",
+            "llama3-8b-8192": "Llama 3 8B（超快，适合简单任务）",
+            "mixtral-8x7b-32768": "Mixtral 8x7B（长上下文）",
+        },
+        "price_note": "有免费额度，付费约 $0.59/1M tokens，速度极快"
+    },
+    "qwen": {
+        "name": "阿里通义千问",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "env_key": "DASHSCOPE_API_KEY",
+        "default_model": "qwen-plus",              # 中文效果好，价格适中
+        "models": {
+            "qwen-plus": "通义千问 Plus（中文效果好）",
+            "qwen-turbo": "通义千问 Turbo（速度快，价格低）",
+            "qwen-max": "通义千问 Max（最强效果）",
+        },
+        "price_note": "qwen-turbo 约 ¥0.3/1M tokens，中文场景推荐"
+    },
+    "openai": {
+        "name": "OpenAI",
+        "base_url": None,                          # 使用默认
+        "env_key": "OPENAI_API_KEY",
+        "default_model": "gpt-4.1-mini",
+        "models": {
+            "gpt-4.1-mini": "GPT-4.1 Mini（平衡版）",
+            "gpt-4o-mini": "GPT-4o Mini（经济版）",
+        },
+        "price_note": "gpt-4.1-mini 约 $0.40/1M tokens"
+    }
+}
+
+# 默认优先级：DeepSeek > Gemini > Groq > 通义千问 > OpenAI
+# 系统会按顺序检测哪个 API Key 已配置，自动选择
+DEFAULT_PROVIDER_PRIORITY = ["deepseek", "gemini", "groq", "qwen", "openai"]
+
+
+def detect_provider() -> Dict[str, str]:
+    """自动检测已配置的 API Key，返回最优提供商信息"""
+    for provider_key in DEFAULT_PROVIDER_PRIORITY:
+        config = MODEL_PROVIDERS[provider_key]
+        api_key = os.environ.get(config["env_key"], "")
+        if api_key and api_key.strip():
+            logger.info(f"✅ 检测到 {config['name']} API Key，将使用 {config['default_model']}")
+            return {
+                "provider": provider_key,
+                "api_key": api_key.strip(),
+                "base_url": config["base_url"],
+                "model": config["default_model"],
+                "name": config["name"]
+            }
+    # 兜底：使用环境变量中的通用配置（兼容旧版）
+    fallback_key = os.environ.get("OPENAI_API_KEY", "")
+    return {
+        "provider": "openai",
+        "api_key": fallback_key,
+        "base_url": None,
+        "model": "gpt-4.1-mini",
+        "name": "OpenAI (fallback)"
+    }
+
+
 # ===================== 平台风格配置（深度差异化版） =====================
+
 PLATFORM_STYLES = {
     "zhihu": {
         "name": "知乎",
@@ -44,7 +139,6 @@ PLATFORM_STYLES = {
             "专业术语要解释清楚，不要假设读者都懂"
         ]
     },
-
     "wechat": {
         "name": "微信公众号",
         "icon": "🟢",
@@ -85,7 +179,6 @@ PLATFORM_STYLES = {
             "结尾必须有互动引导，如「你有没有遇到过这种情况？」"
         ]
     },
-
     "xiaohongshu": {
         "name": "小红书",
         "icon": "🔴",
@@ -121,7 +214,6 @@ PLATFORM_STYLES = {
             "标题要包含核心关键词，方便搜索"
         ]
     },
-
     "toutiao": {
         "name": "今日头条",
         "icon": "🟠",
@@ -158,7 +250,6 @@ PLATFORM_STYLES = {
             "结尾要有明确的观点或建议，不能虎头蛇尾"
         ]
     },
-
     "baijia": {
         "name": "百家号",
         "icon": "🔴",
@@ -182,10 +273,6 @@ PLATFORM_STYLES = {
 
 [详细说明]
 
-**四、[第四个要点（如有）]**
-
-[详细说明]
-
 **总结**
 
 [100字以内，重申核心关键词，方便搜索收录]
@@ -199,7 +286,6 @@ PLATFORM_STYLES = {
             "结尾总结要重复核心关键词"
         ]
     },
-
     "weibo": {
         "name": "微博",
         "icon": "🟡",
@@ -226,7 +312,6 @@ PLATFORM_STYLES = {
             "语气可以稍微有点「刺」，引发讨论"
         ]
     },
-
     "bilibili": {
         "name": "B站专栏",
         "icon": "🔵",
@@ -263,7 +348,6 @@ PLATFORM_STYLES = {
             "可以在关键处加「（划重点）」等提示"
         ]
     },
-
     "douyin": {
         "name": "抖音图文",
         "icon": "⚫",
@@ -294,7 +378,6 @@ PLATFORM_STYLES = {
             "结尾必须有明确的行动指引"
         ]
     },
-
     "general": {
         "name": "通用",
         "icon": "⚪",
@@ -311,12 +394,24 @@ PLATFORM_STYLES = {
 
 
 class AICreator:
-    """AI 内容创作器"""
+    """AI 内容创作器（默认使用 DeepSeek，支持多模型切换）"""
 
-    def __init__(self, api_key: Optional[str] = None, api_base: Optional[str] = None, model: str = "gpt-4.1-mini"):
-        self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
-        self.api_base = api_base  # None 表示使用环境变量中预配置的 base_url
-        self.model = model
+    def __init__(self, api_key: Optional[str] = None, api_base: Optional[str] = None,
+                 model: Optional[str] = None, provider: Optional[str] = None):
+        # 如果没有显式指定，自动检测最优提供商
+        if api_key:
+            self.api_key = api_key
+            self.api_base = api_base
+            self.model = model or "deepseek-chat"
+            self.provider = provider or "custom"
+        else:
+            detected = detect_provider()
+            self.api_key = detected["api_key"]
+            self.api_base = detected["base_url"]
+            self.model = detected["model"]
+            self.provider = detected["provider"]
+            logger.info(f"🤖 使用模型：{detected['name']} / {self.model}")
+
         self._client = None
 
     def _get_client(self) -> OpenAI:
@@ -339,7 +434,7 @@ class AICreator:
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
-            logger.error(f"AI 调用失败: {e}")
+            logger.error(f"AI 调用失败 [{self.provider}/{self.model}]: {e}")
             raise
 
     def _build_platform_system_prompt(self, platform: str) -> str:
@@ -377,8 +472,8 @@ class AICreator:
         }
 
         title_rule = platform_title_rules.get(platform, platform_title_rules["general"])
-
         system_prompt = self._build_platform_system_prompt(platform)
+
         user_prompt = f"""请为以下主题生成 {count} 个适合{style['name']}平台的文章标题。
 
 主题：{topic}
@@ -461,7 +556,8 @@ class AICreator:
             "summary": summary,
             "platform": platform,
             "platform_name": style["name"],
-            "word_count": len(content)
+            "word_count": len(content),
+            "model_used": f"{self.provider}/{self.model}"
         }
 
     def rewrite_article(self, content: str, platform: str = "general",
@@ -469,7 +565,6 @@ class AICreator:
         """改写文章（深度适配目标平台风格）"""
         style = PLATFORM_STYLES.get(platform, PLATFORM_STYLES["general"])
         hint_str = f"\n额外要求：{style_hint}" if style_hint else ""
-
         system_prompt = self._build_platform_system_prompt(platform)
 
         user_prompt = f"""请将以下文章彻底改写为适合【{style['name']}】平台的版本。
@@ -497,11 +592,11 @@ class AICreator:
         style = PLATFORM_STYLES.get(platform, PLATFORM_STYLES["general"])
 
         tag_format_rules = {
-            "xiaohongshu": "标签要适合小红书搜索，包含品类词、场景词、人群词，格式：不加#号",
-            "weibo": "标签要有话题感，适合微博热搜，格式：不加#号",
-            "toutiao": "标签要是常见搜索词，SEO友好，格式：不加#号",
-            "zhihu": "标签要是知乎话题分类词，专业准确，格式：不加#号",
-            "general": "标签要精准相关，格式：不加#号"
+            "xiaohongshu": "标签要适合小红书搜索，包含品类词、场景词、人群词",
+            "weibo": "标签要有话题感，适合微博热搜",
+            "toutiao": "标签要是常见搜索词，SEO友好",
+            "zhihu": "标签要是知乎话题分类词，专业准确",
+            "general": "标签要精准相关"
         }
 
         tag_rule = tag_format_rules.get(platform, tag_format_rules["general"])
@@ -512,10 +607,7 @@ class AICreator:
 内容摘要：{content[:300]}
 标签规则：{tag_rule}
 
-要求：
-- 每行一个标签
-- 不要加 # 符号
-- 标签要精准相关，适合{style['name']}平台
+要求：每行一个标签，不要加 # 符号，标签要精准相关
 
 请输出标签列表："""
 
@@ -561,7 +653,7 @@ class AICreator:
                     "word_count": len(adapted_content),
                     "style_summary": style.get("style", "")
                 }
-                time.sleep(0.5)  # 避免频繁调用
+                time.sleep(0.3)
             except Exception as e:
                 logger.error(f"适配平台 {platform} 失败: {e}")
                 results[platform] = {"error": str(e)}
@@ -598,3 +690,13 @@ class AICreator:
             return self._chat([{"role": "user", "content": prompt}], temperature=0.8, max_tokens=50)
         except Exception:
             return original_title
+
+    def get_current_model_info(self) -> Dict[str, str]:
+        """获取当前使用的模型信息"""
+        provider_config = MODEL_PROVIDERS.get(self.provider, {})
+        return {
+            "provider": self.provider,
+            "provider_name": provider_config.get("name", self.provider),
+            "model": self.model,
+            "price_note": provider_config.get("price_note", ""),
+        }

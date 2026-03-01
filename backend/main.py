@@ -23,8 +23,9 @@ from models import (
     init_db, get_db, Article, PublishTask, PlatformAccount,
     AIConfig, HotTopic, SessionLocal
 )
-from ai_creator import AICreator, PLATFORM_STYLES
+from ai_creator import AICreator, PLATFORM_STYLES, MODEL_PROVIDERS, detect_provider
 from publisher import PublisherManager, PLATFORM_CONFIGS
+from content_moderator import moderate_content, run_moderation_pipeline, clean_markdown
 
 # ===================== 初始化 =====================
 BASE_DIR = Path(__file__).parent.parent
@@ -35,6 +36,10 @@ app = FastAPI(
     description="AI 驱动的多平台内容创作与发布管理系统",
     version="2.0.0"
 )
+
+# 启动时打印当前使用的模型
+_detected = detect_provider()
+logger.info(f"🤖 当前 AI 提供商：{_detected['name']} / {_detected['model']}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -90,6 +95,12 @@ class PublishRequest(BaseModel):
 
 class HotTopicsRequest(BaseModel):
     category: str = "科技"
+
+class ModerationRequest(BaseModel):
+    title: str
+    content: str
+    platforms: Optional[List[str]] = None
+    auto_rewrite: bool = True
 
 class AIConfigCreate(BaseModel):
     name: str
@@ -162,27 +173,46 @@ async def generate_outline(req: GenerateTitlesRequest, db: Session = Depends(get
 
 @app.post("/api/ai/article")
 async def generate_article(req: GenerateArticleRequest, db: Session = Depends(get_db)):
-    """生成完整文章"""
+    """生成完整文章（含自动 Qwen 审核 + 合规改写）"""
     try:
         creator = get_ai_creator(db)
         result = creator.generate_article(req.title, req.outline, req.platform, req.keywords)
 
+        # ── 自动审核流水线（生成后立即审核）──────────────────────────────────
+        logger.info(f"开始对生成内容进行审核: {result['title'][:30]}...")
+        mod_result = run_moderation_pipeline(
+            title=result["title"],
+            content=result["content"],
+            platforms=[req.platform] if req.platform != "general" else None,
+            auto_rewrite=True,
+        )
+        # 使用审核后的内容（可能已被合规改写）
+        final_content = mod_result.final_content or result["content"]
+        moderation_summary = mod_result.to_dict()
+
         # 自动保存到草稿
         article = Article(
             title=result["title"],
-            content=result["content"],
+            content=final_content,
             summary=result.get("summary", ""),
             tags="",
             category=result.get("platform_name", ""),
             ai_generated=True,
-            word_count=result.get("word_count", 0),
+            word_count=len(final_content),
             status="draft"
         )
         db.add(article)
         db.commit()
         db.refresh(article)
 
-        return {"success": True, "article_id": article.id, **result}
+        return {
+            "success": True,
+            "article_id": article.id,
+            **result,
+            "content": final_content,           # 覆盖为审核后内容
+            "word_count": len(final_content),
+            "moderation": moderation_summary,   # 附带审核报告
+        }
     except Exception as e:
         logger.error(f"生成文章失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -496,6 +526,68 @@ async def get_stats(db: Session = Depends(get_db)):
             for k, v in PLATFORM_CONFIGS.items()
         ]
     }
+
+@app.get("/api/model-info")
+async def get_model_info(db: Session = Depends(get_db)):
+    """获取当前使用的 AI 模型信息"""
+    creator = get_ai_creator(db)
+    info = creator.get_current_model_info()
+    return {
+        "current": info,
+        "providers": {
+            k: {
+                "name": v["name"],
+                "default_model": v["default_model"],
+                "models": v["models"],
+                "price_note": v["price_note"],
+                "env_key": v["env_key"],
+                "configured": bool(os.environ.get(v["env_key"], "").strip())
+            }
+            for k, v in MODEL_PROVIDERS.items()
+        }
+    }
+
+# ---- 内容审核 ----
+
+@app.post("/api/moderate")
+async def moderate_article(req: ModerationRequest):
+    """
+    独立内容审核接口（三层流水线）
+    Layer 1: 本地敏感词检测
+    Layer 2: Qwen 语义审核（需配置 DASHSCOPE_API_KEY）
+    Layer 3: AI 合规改写（自动修复违规内容）
+    """
+    try:
+        result = moderate_content(
+            title=req.title,
+            content=req.content,
+            platforms=req.platforms,
+            auto_rewrite=req.auto_rewrite,
+        )
+        return {"success": True, **result}
+    except Exception as e:
+        logger.error(f"内容审核失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/moderate/quick")
+async def quick_check(req: ModerationRequest):
+    """
+    快速敏感词检测（仅 Layer 1，无需 API Key，毫秒级）
+    """
+    from content_moderator import check_sensitive_words
+    matches = check_sensitive_words(
+        f"{req.title}\n\n{req.content}",
+        req.platforms or ["all"]
+    )
+    return {
+        "success": True,
+        "is_clean": not any(m.severity == "block" for m in matches),
+        "flagged_words": [m.to_dict() for m in matches],
+        "block_count": sum(1 for m in matches if m.severity == "block"),
+        "warn_count": sum(1 for m in matches if m.severity == "warn"),
+    }
+
 
 @app.get("/api/platform-styles")
 async def get_platform_styles():
