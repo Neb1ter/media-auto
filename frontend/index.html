@@ -2236,23 +2236,41 @@
             </button>
           </div>
 
-          <!-- 模型状态卡片 -->
+          <!-- 模型选择卡片 -->
           <div class="bg-white rounded-xl p-5 shadow">
-            <h3 class="font-bold text-gray-700 mb-3">🤖 当前生图模型</h3>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-bold text-gray-700">🤖 选择生图模型</h3>
+              <span class="text-xs text-gray-400">勾选即并行生成</span>
+            </div>
             <div class="space-y-2">
-              <div v-for="(info, key) in aiImageKeyStatus" :key="key"
-                class="flex items-center justify-between p-2.5 rounded-lg border text-xs"
-                :class="info.configured ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'">
-                <div>
-                  <div class="font-medium" :class="info.configured ? 'text-green-800' : 'text-gray-400'">{{ info.name }}</div>
-                  <div class="text-gray-400 mt-0.5">{{ info.price }}</div>
+              <div v-for="m in availableImageModels" :key="m.id"
+                @click="m.configured && toggleImageModel(m.id)"
+                class="flex items-center justify-between p-2.5 rounded-lg border text-xs transition-all"
+                :class="[
+                  m.configured ? 'cursor-pointer hover:border-purple-300' : 'cursor-not-allowed opacity-50',
+                  selectedImageModels.includes(m.id) ? 'border-purple-400 bg-purple-50' : (m.configured ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50')
+                ]">
+                <div class="flex items-center space-x-2">
+                  <div class="w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0"
+                    :class="selectedImageModels.includes(m.id) ? 'bg-purple-500 border-purple-500' : 'border-gray-300'">
+                    <span v-if="selectedImageModels.includes(m.id)" class="text-white text-xs leading-none">✓</span>
+                  </div>
+                  <div>
+                    <div class="font-medium" :class="m.configured ? 'text-gray-800' : 'text-gray-400'">{{ m.name }}</div>
+                    <div class="text-gray-400 mt-0.5">{{ m.price }}
+                      <span v-for="tag in m.tags" :key="tag" class="ml-1 px-1 py-0.5 bg-purple-100 text-purple-600 rounded text-xs">·{{ tag }}</span>
+                    </div>
+                  </div>
                 </div>
-                <span v-if="info.configured" class="text-green-600 font-bold">✅</span>
-                <span v-else class="text-gray-300">○</span>
+                <span v-if="m.configured" class="text-green-500 text-xs">已就绪</span>
+                <span v-else class="text-gray-300 text-xs">未配置</span>
               </div>
             </div>
+            <div v-if="selectedImageModels.length > 0" class="mt-2 text-xs text-purple-600 font-medium text-center">
+              已选 {{ selectedImageModels.length }} 个模型，将并行生成 {{ selectedImageModels.length }} 张图片
+            </div>
             <button @click="activeTab = 'settings'; settingsSubTab = 'ai_image'" class="w-full mt-3 text-xs text-indigo-500 hover:text-indigo-700 border border-indigo-200 rounded-lg py-1.5">
-              ⚙️ 配置 API Key →
+              ⚙️ 配置 API Key / 自定义模型 →
             </button>
           </div>
         </div>
@@ -2270,18 +2288,48 @@
             <!-- 生成中状态 -->
             <div v-if="standaloneImageLoading" class="flex flex-col items-center justify-center py-20">
               <div class="text-5xl mb-4 animate-bounce">✨</div>
-              <div class="text-gray-500 font-medium">AI 正在创作中...</div>
-              <div class="text-xs text-gray-400 mt-2">Nano Banana / DALL-E 3 / 通义万象 依次尝试</div>
+              <div class="text-gray-500 font-medium">{{ selectedImageModels.length > 1 ? selectedImageModels.length + ' 个模型并行生成中...' : 'AI 正在创作中...' }}</div>
+              <div class="text-xs text-gray-400 mt-2">请稍候，每个模型独立生成一张</div>
             </div>
 
             <!-- 空状态 -->
-            <div v-else-if="standaloneImageResults.length === 0" class="flex flex-col items-center justify-center py-20 text-gray-300">
+            <div v-else-if="multiImageResults.length === 0 && standaloneImageResults.length === 0" class="flex flex-col items-center justify-center py-20 text-gray-300">
               <div class="text-6xl mb-4">🎨</div>
-              <div class="text-gray-400 font-medium">在左侧输入描述，点击开始生成</div>
-              <div class="text-xs text-gray-300 mt-2">支持 Nano Banana、DALL-E 3、通义万象</div>
+              <div class="text-gray-400 font-medium">在左侧勾选模型，输入描述，点击开始生成</div>
+              <div class="text-xs text-gray-300 mt-2">支持多模型并行生成，每个模型各出一张</div>
             </div>
 
-            <!-- 图片网格 -->
+            <!-- 多模型并行结果（按模型分组） -->
+            <div v-else-if="multiImageResults.length > 0" class="space-y-5">
+              <div v-for="group in multiImageResults" :key="group.model_id"
+                class="border rounded-xl overflow-hidden">
+                <div class="flex items-center justify-between px-4 py-2.5"
+                  :class="group.success ? 'bg-purple-50 border-b border-purple-100' : 'bg-red-50 border-b border-red-100'">
+                  <span class="text-sm font-bold" :class="group.success ? 'text-purple-700' : 'text-red-600'">{{ group.name }}</span>
+                  <span v-if="!group.success" class="text-xs text-red-500">⚠️ 生成失败: {{ group.error }}</span>
+                  <span v-else class="text-xs text-green-600">✅ 生成成功</span>
+                </div>
+                <div v-if="group.success" class="p-3">
+                  <div class="img-card aspect-video group relative">
+                    <img :src="group.url" :alt="group.name + '生成图片'" class="w-full h-full object-cover" loading="lazy" />
+                    <div class="img-overlay">
+                      <div class="flex space-x-2">
+                        <a :href="group.url" target="_blank" download
+                          class="bg-white bg-opacity-90 rounded-full px-3 py-1 text-xs font-medium text-indigo-700 hover:bg-opacity-100">
+                          ⬇️ 下载
+                        </a>
+                        <button @click="copyImageUrl(group.url)"
+                          class="bg-white bg-opacity-90 rounded-full px-3 py-1 text-xs font-medium text-gray-700 hover:bg-opacity-100">
+                          📋 复制链接
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 单模型图片网格（兼容旧逻辑） -->
             <div v-else class="grid grid-cols-2 gap-3">
               <div v-for="(img, idx) in standaloneImageResults" :key="idx"
                 class="img-card aspect-video group relative">
@@ -2303,7 +2351,7 @@
             </div>
 
             <!-- 优化后的 Prompt -->
-            <div v-if="standaloneOptimizedPrompt && standaloneImageResults.length > 0" class="mt-4 p-3 bg-purple-50 rounded-lg">
+            <div v-if="standaloneOptimizedPrompt && (standaloneImageResults.length > 0 || multiImageResults.length > 0)" class="mt-4 p-3 bg-purple-50 rounded-lg">
               <div class="text-xs text-purple-600 font-medium mb-1">AI 优化后的 Prompt：</div>
               <div class="text-xs text-purple-700">{{ standaloneOptimizedPrompt }}</div>
             </div>
@@ -3529,33 +3577,98 @@ createApp({
     const standaloneImageLoading = ref(false);
     const standaloneImageGenModel = ref('');
     const standaloneOptimizedPrompt = ref('');
+    // 多模型并行生成
+    const selectedImageModels = ref([]);
+    const multiImageResults = ref([]);
+
+    // 可用模型列表（动态根据配置状态更新）
+    const availableImageModels = Vue.computed(() => [
+      {
+        id: 'nano_banana',
+        name: '🍌 Nano Banana',
+        price: 'Gemini 内核',
+        tags: ['中文友好'],
+        configured: aiImageKeyStatus.value.nano_banana?.configured || false,
+      },
+      {
+        id: 'dalle3',
+        name: '🎨 DALL-E 3',
+        price: 'OpenAI 内核',
+        tags: ['高质量'],
+        configured: aiImageKeyStatus.value.dalle3?.configured || false,
+      },
+      {
+        id: 'wanx',
+        name: '🖌️ 通义万象',
+        price: '阿里云内核',
+        tags: ['免费额度'],
+        configured: aiImageKeyStatus.value.wanx?.configured || false,
+      },
+    ]);
+
+    function toggleImageModel(id) {
+      const idx = selectedImageModels.value.indexOf(id);
+      if (idx >= 0) {
+        selectedImageModels.value.splice(idx, 1);
+      } else {
+        selectedImageModels.value.push(id);
+      }
+    }
 
     async function generateStandaloneImages() {
       if (!standaloneImagePrompt.value.trim()) return;
+      if (selectedImageModels.value.length === 0) {
+        showToast('请先勾选至少一个生图模型', 'error');
+        return;
+      }
       standaloneImageLoading.value = true;
       standaloneImageResults.value = [];
+      multiImageResults.value = [];
       standaloneImageGenModel.value = '';
       standaloneOptimizedPrompt.value = '';
-      const platformMap = { '小红书1:1': 'xiaohongshu', '微信16:9': 'wechat', '抖音9:16': 'douyin', '通用': '' };
+      const platformMap = { '小红晦1:1': 'xiaohongshu', '微信16:9': 'wechat', '抖音9:16': 'douyin', '通用': '' };
       const platformKey = platformMap[standaloneImagePlatform.value] || '';
       try {
-        const data = await fetchAPI('/api/images/generate/v2', {
-          method: 'POST',
-          body: JSON.stringify({
-            prompt: standaloneImagePrompt.value,
-            style: standaloneImageStyle.value,
-            count: standaloneImageCount.value,
-            platform: platformKey || null,
-          }),
-        });
-        if (data.success) {
-          standaloneImageResults.value = data.images || [];
-          standaloneImageGenModel.value = data.model || '';
-          standaloneOptimizedPrompt.value = data.optimized_prompt || '';
-          const note = data.note ? ` · ${data.note}` : '';
-          showToast(`生成成功：${data.images?.length || 0} 张（${data.model}${note}）`);
+        if (selectedImageModels.value.length > 1) {
+          // 多模型并行生成
+          const data = await fetchAPI('/api/images/generate/multi', {
+            method: 'POST',
+            body: JSON.stringify({
+              prompt: standaloneImagePrompt.value,
+              style: standaloneImageStyle.value,
+              platform: platformKey || null,
+              models: selectedImageModels.value,
+            }),
+          });
+          if (data.success) {
+            multiImageResults.value = data.results || [];
+            standaloneOptimizedPrompt.value = data.optimized_prompt || '';
+            const successCount = data.results.filter(r => r.success).length;
+            showToast(`并行生成完成：${successCount}/${data.results.length} 个模型成功`);
+          } else {
+            showToast(data.message || '生成失败', 'error');
+          }
         } else {
-          showToast(data.message || '生成失败', 'error');
+          // 单模型生成
+          const data = await fetchAPI('/api/images/generate/v2', {
+            method: 'POST',
+            body: JSON.stringify({
+              prompt: standaloneImagePrompt.value,
+              style: standaloneImageStyle.value,
+              count: standaloneImageCount.value,
+              platform: platformKey || null,
+              model: selectedImageModels.value[0],
+            }),
+          });
+          if (data.success) {
+            standaloneImageResults.value = data.images || [];
+            standaloneImageGenModel.value = data.model || '';
+            standaloneOptimizedPrompt.value = data.optimized_prompt || '';
+            const note = data.note ? ` · ${data.note}` : '';
+            showToast(`生成成功：${data.images?.length || 0} 张（${data.model}${note}）`);
+          } else {
+            showToast(data.message || '生成失败', 'error');
+          }
         }
       } catch (e) {
         showToast('AI 生成失败：' + e.message, 'error');
@@ -3764,6 +3877,7 @@ createApp({
       // AI 生图页面
       standaloneImagePrompt, standaloneImageStyle, standaloneImagePlatform, standaloneImageCount,
       standaloneImageResults, standaloneImageLoading, standaloneImageGenModel, standaloneOptimizedPrompt,
+      selectedImageModels, multiImageResults, availableImageModels, toggleImageModel,
       generateStandaloneImages, copyImageUrl,
       // AI 生图 API Key 配置
       aiImageKeyStatus, aiImageKeyForm, aiImageKeySaving, aiImageKeySaveMsg, saveAIImageKeys,

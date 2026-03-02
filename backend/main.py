@@ -1160,6 +1160,13 @@ class ImageGenerateV2Request(BaseModel):
     count: int = 2
     article_title: Optional[str] = None   # 可选：根据文章标题自动优化 prompt
     platform: Optional[str] = None        # 可选：根据平台优化图片尺寸和风格
+    model: Optional[str] = None           # 可选：指定单个模型（nano_banana/dalle3/wanx）
+
+class ImageGenerateMultiRequest(BaseModel):
+    prompt: str
+    style: str = "realistic"
+    platform: Optional[str] = None
+    models: List[str]                     # 选中的模型 ID 列表
 
 @app.post("/api/images/generate/v2")
 async def generate_image_v2(req: ImageGenerateV2Request, db: Session = Depends(get_db)):
@@ -1450,6 +1457,117 @@ async def generate_image_v2(req: ImageGenerateV2Request, db: Session = Depends(g
     }
 
 
+# ===================== 多模型并行图像生成 =====================
+
+async def _generate_single_model(model_id: str, full_prompt: str, final_prompt: str, image_size: str) -> dict:
+    """单个模型生成一张图片，返回结果字典"""
+    import httpx
+    model_names = {
+        'nano_banana': '🍌 Nano Banana',
+        'dalle3': '🎨 DALL-E 3',
+        'wanx': '🖌️ 通义万象',
+    }
+    name = model_names.get(model_id, model_id)
+
+    if model_id == 'nano_banana':
+        nb_key = os.environ.get("NANO_BANANA_API_KEY", "").strip()
+        nb_base = os.environ.get("NANO_BANANA_BASE_URL", "").strip()
+        if not nb_key:
+            return {"model_id": model_id, "name": name, "success": False, "error": "未配置 API Key"}
+        try:
+            from openai import OpenAI as OAI
+            if nb_base:
+                client = OAI(api_key=nb_key, base_url=nb_base)
+                r = client.images.generate(model="gemini-2.5-flash-image", prompt=full_prompt, n=1, size=image_size)
+            else:
+                client = OAI(api_key=nb_key)
+                r = client.images.generate(model="gemini-2.5-flash-image", prompt=full_prompt, n=1, size=image_size)
+            item = r.data[0]
+            url = f"data:image/png;base64,{item.b64_json}" if item.b64_json else item.url
+            return {"model_id": model_id, "name": name, "success": True, "url": url}
+        except Exception as e:
+            return {"model_id": model_id, "name": name, "success": False, "error": str(e)[:120]}
+
+    elif model_id == 'dalle3':
+        openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
+        openai_base = os.environ.get("OPENAI_IMAGE_BASE_URL", os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")).strip()
+        if not openai_key:
+            return {"model_id": model_id, "name": name, "success": False, "error": "未配置 API Key"}
+        try:
+            from openai import OpenAI as OAI
+            client = OAI(api_key=openai_key, base_url=openai_base)
+            r = client.images.generate(model="dall-e-3", prompt=full_prompt, n=1, size=image_size, quality="standard")
+            return {"model_id": model_id, "name": name, "success": True, "url": r.data[0].url}
+        except Exception as e:
+            return {"model_id": model_id, "name": name, "success": False, "error": str(e)[:120]}
+
+    elif model_id == 'wanx':
+        dashscope_key = os.environ.get("DASHSCOPE_API_KEY", "").strip()
+        if not dashscope_key:
+            return {"model_id": model_id, "name": name, "success": False, "error": "未配置 API Key"}
+        try:
+            async with httpx.AsyncClient(timeout=90) as hc:
+                resp = await hc.post(
+                    "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+                    headers={"Authorization": f"Bearer {dashscope_key}", "X-DashScope-Async": "enable"},
+                    json={"model": "wanx2.1-t2i-turbo", "input": {"prompt": final_prompt}, "parameters": {"size": "1440*960", "n": 1}}
+                )
+            if resp.status_code != 200:
+                return {"model_id": model_id, "name": name, "success": False, "error": f"HTTP {resp.status_code}"}
+            task_id = resp.json()["output"]["task_id"]
+            async with httpx.AsyncClient(timeout=90) as hc:
+                for _ in range(18):
+                    await asyncio.sleep(5)
+                    poll = await hc.get(
+                        f"https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}",
+                        headers={"Authorization": f"Bearer {dashscope_key}"}
+                    )
+                    output = poll.json().get("output", {})
+                    if output.get("task_status") == "SUCCEEDED":
+                        url = output["results"][0]["url"]
+                        return {"model_id": model_id, "name": name, "success": True, "url": url}
+                    elif output.get("task_status") in ("FAILED", "CANCELED"):
+                        return {"model_id": model_id, "name": name, "success": False, "error": "任务失败"}
+            return {"model_id": model_id, "name": name, "success": False, "error": "超时"}
+        except Exception as e:
+            return {"model_id": model_id, "name": name, "success": False, "error": str(e)[:120]}
+
+    return {"model_id": model_id, "name": name, "success": False, "error": "未知模型"}
+
+
+@app.post("/api/images/generate/multi")
+async def generate_image_multi(req: ImageGenerateMultiRequest, db: Session = Depends(get_db)):
+    """多模型并行图像生成：每个模型独立生成一张图片"""
+    if not req.models:
+        raise HTTPException(status_code=400, detail="请至少选择一个模型")
+
+    final_prompt = req.prompt.strip()
+    style_prompts = {
+        "realistic": "photorealistic, high quality, 8k, professional photography, sharp focus",
+        "illustration": "digital illustration, flat design, colorful, modern, clean lines",
+        "anime": "anime style, manga, vibrant colors, detailed, Studio Ghibli inspired",
+        "flat": "flat design, minimal, clean, vector style, geometric shapes",
+        "cinematic": "cinematic, dramatic lighting, film grain, wide angle, epic",
+    }
+    style_suffix = style_prompts.get(req.style, style_prompts["realistic"])
+    full_prompt = f"{final_prompt}, {style_suffix}"
+    platform_sizes = {
+        "xiaohongshu": "1024x1024",
+        "wechat": "1792x1024",
+        "douyin": "1024x1792",
+    }
+    image_size = platform_sizes.get(req.platform or "", "1792x1024")
+
+    # 并行调用所有选中模型
+    tasks = [_generate_single_model(mid, full_prompt, final_prompt, image_size) for mid in req.models]
+    results = await asyncio.gather(*tasks)
+
+    return {
+        "success": True,
+        "results": list(results),
+        "optimized_prompt": final_prompt,
+    }
+
 
 # ===================== 系统日志 API =====================
 
@@ -1702,3 +1820,271 @@ async def get_ai_image_key_status():
         },
         "priority": "Nano Banana → DALL-E 3 → 通义万象 → Loremflickr（演示兜底）",
     }
+
+
+# ===================== 多模型并行生图接口 =====================
+
+# 内置生图模型定义
+BUILTIN_IMAGE_MODELS = [
+    {
+        "id": "nano_banana",
+        "model_name": "gemini-2.5-flash-image",
+        "name": "🍌 Nano Banana",
+        "provider": "Google Gemini",
+        "price": "$0.02/张",
+        "description": "速度快，性价比最高",
+        "env_key": "NANO_BANANA_API_KEY",
+        "base_url_env": "NANO_BANANA_BASE_URL",
+        "response_type": "b64_json",
+        "tags": ["推荐", "快速"],
+    },
+    {
+        "id": "dalle3",
+        "model_name": "dall-e-3",
+        "name": "🎨 DALL-E 3",
+        "provider": "OpenAI",
+        "price": "$0.04/张",
+        "description": "细节丰富，质量高",
+        "env_key": "OPENAI_API_KEY",
+        "base_url_env": "OPENAI_IMAGE_BASE_URL",
+        "response_type": "url",
+        "tags": ["高质量"],
+    },
+    {
+        "id": "flux_pro",
+        "model_name": "flux-pro",
+        "name": "⚡ Flux Pro",
+        "provider": "Black Forest Labs",
+        "price": "$0.055/张",
+        "description": "艺术风格出色",
+        "env_key": "NANO_BANANA_API_KEY",   # 共用 Nano Banana Key（API易支持）
+        "base_url_env": "NANO_BANANA_BASE_URL",
+        "response_type": "b64_json",
+        "tags": ["艺术"],
+    },
+    {
+        "id": "flux_pro_11",
+        "model_name": "flux-pro-1.1",
+        "name": "⚡ Flux Pro 1.1",
+        "provider": "Black Forest Labs",
+        "price": "$0.04/张",
+        "description": "Flux 最新旗舰版",
+        "env_key": "NANO_BANANA_API_KEY",
+        "base_url_env": "NANO_BANANA_BASE_URL",
+        "response_type": "b64_json",
+        "tags": ["新版"],
+    },
+    {
+        "id": "flux_2_pro",
+        "model_name": "flux-2-pro",
+        "name": "⚡ Flux 2 Pro",
+        "provider": "Black Forest Labs",
+        "price": "$0.05/张",
+        "description": "第二代 Flux 专业版",
+        "env_key": "NANO_BANANA_API_KEY",
+        "base_url_env": "NANO_BANANA_BASE_URL",
+        "response_type": "b64_json",
+        "tags": [],
+    },
+    {
+        "id": "wanx",
+        "model_name": "wanx2.1-t2i-turbo",
+        "name": "🖌️ 通义万象",
+        "provider": "阿里云",
+        "price": "有免费额度",
+        "description": "中文 prompt 友好",
+        "env_key": "DASHSCOPE_API_KEY",
+        "base_url_env": "",
+        "response_type": "url",
+        "tags": ["中文友好", "免费额度"],
+    },
+]
+
+# 自定义模型存储（内存，重启失效；生产建议写数据库）
+_custom_image_models: list = []
+
+
+class MultiModelImageRequest(BaseModel):
+    prompt: str
+    style: str = "realistic"
+    platform: Optional[str] = None
+    model_ids: List[str] = []          # 内置模型 id 列表
+    custom_model_ids: List[str] = []   # 自定义模型 id 列表
+
+
+class CustomImageModelCreate(BaseModel):
+    name: str
+    model_name: str
+    api_key: str
+    base_url: str
+    description: str = ""
+    price: str = ""
+
+
+def _generate_single_image(model_def: dict, prompt: str, size: str) -> dict:
+    """为单个模型生成一张图片，返回结果字典"""
+    model_id = model_def["id"]
+    model_name = model_def["model_name"]
+    display_name = model_def["name"]
+    try:
+        # 通义万象走 DashScope SDK
+        if model_id == "wanx":
+            import dashscope
+            from dashscope import ImageSynthesis
+            dashscope.api_key = os.environ.get("DASHSCOPE_API_KEY", "")
+            rsp = ImageSynthesis.call(
+                model=model_name,
+                prompt=prompt,
+                n=1,
+                size=size,
+            )
+            if rsp.status_code == 200 and rsp.output.results:
+                return {"model_id": model_id, "name": display_name, "url": rsp.output.results[0].url, "success": True}
+            return {"model_id": model_id, "name": display_name, "success": False, "error": str(rsp.message)}
+
+        # 其他模型走 OpenAI-compatible API
+        # 自定义模型直接读取存储的 key，内置模型读环境变量
+        if model_def.get("env_key") == "__custom__":
+            api_key = model_def.get("_api_key", "").strip()
+            base_url = model_def.get("_base_url", "").strip()
+        else:
+            api_key = os.environ.get(model_def["env_key"], "").strip()
+            base_url_env = model_def.get("base_url_env", "")
+            base_url = os.environ.get(base_url_env, "").strip() if base_url_env else ""
+
+        if not api_key:
+            return {"model_id": model_id, "name": display_name, "success": False, "error": "API Key 未配置"}
+
+        from openai import OpenAI as OAI
+        client_kwargs = {"api_key": api_key}
+        if base_url:
+            client_kwargs["base_url"] = base_url
+        client = OAI(**client_kwargs)
+
+        r = client.images.generate(
+            model=model_name,
+            prompt=prompt,
+            n=1,
+            size=size,
+        )
+        item = r.data[0]
+        if item.b64_json:
+            img_url = f"data:image/png;base64,{item.b64_json}"
+        elif item.url:
+            img_url = item.url
+        else:
+            return {"model_id": model_id, "name": display_name, "success": False, "error": "返回数据为空"}
+
+        return {"model_id": model_id, "name": display_name, "url": img_url, "success": True}
+
+    except Exception as e:
+        logger.error(f"[{display_name}] 生图失败: {e}")
+        return {"model_id": model_id, "name": display_name, "success": False, "error": str(e)[:200]}
+
+
+@app.post("/api/images/generate/multi")
+async def generate_images_multi(req: MultiModelImageRequest, db: Session = Depends(get_db)):
+    """
+    多模型并行生图接口
+    - 每个选中的模型各自生成一张图片
+    - 并行执行，按模型分组返回结果
+    """
+    import asyncio
+    import concurrent.futures
+
+    if not req.prompt.strip():
+        raise HTTPException(status_code=400, detail="prompt 不能为空")
+
+    # 平台尺寸映射
+    platform_sizes = {
+        "小红书1:1": "1024x1024",
+        "微信16:9": "1792x1024",
+        "抖音9:16": "1024x1792",
+        "通用": "1024x1024",
+    }
+    size = platform_sizes.get(req.platform or "", "1024x1024")
+
+    # 收集要生成的模型列表
+    models_to_run = []
+    builtin_map = {m["id"]: m for m in BUILTIN_IMAGE_MODELS}
+
+    for mid in req.model_ids:
+        if mid in builtin_map:
+            models_to_run.append(builtin_map[mid])
+
+    for mid in req.custom_model_ids:
+        custom = next((m for m in _custom_image_models if m["id"] == mid), None)
+        if custom:
+            models_to_run.append(custom)
+
+    if not models_to_run:
+        raise HTTPException(status_code=400, detail="请至少选择一个生图模型")
+
+    # 并行执行所有模型
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(models_to_run)) as executor:
+        futures = [
+            loop.run_in_executor(executor, _generate_single_image, model_def, req.prompt, size)
+            for model_def in models_to_run
+        ]
+        results = await asyncio.gather(*futures)
+
+    success_count = sum(1 for r in results if r.get("success"))
+    return {
+        "success": True,
+        "results": list(results),
+        "total": len(results),
+        "success_count": success_count,
+        "prompt": req.prompt,
+    }
+
+
+@app.get("/api/images/models")
+async def get_available_image_models():
+    """获取所有可用生图模型（内置 + 自定义），并标注是否已配置 Key"""
+    result = []
+    for m in BUILTIN_IMAGE_MODELS:
+        api_key = os.environ.get(m["env_key"], "").strip()
+        configured = bool(api_key)
+        result.append({**m, "configured": configured, "is_custom": False})
+
+    for m in _custom_image_models:
+        result.append({**m, "configured": True, "is_custom": True})
+
+    return {"success": True, "models": result}
+
+
+@app.post("/api/images/models/custom")
+async def add_custom_image_model(req: CustomImageModelCreate):
+    """新增自定义生图模型"""
+    import uuid
+    new_model = {
+        "id": f"custom_{uuid.uuid4().hex[:8]}",
+        "model_name": req.model_name.strip(),
+        "name": req.name.strip(),
+        "provider": "自定义",
+        "price": req.price or "自定义",
+        "description": req.description,
+        "env_key": "__custom__",
+        "base_url_env": "__custom__",
+        "_api_key": req.api_key.strip(),
+        "_base_url": req.base_url.strip(),
+        "response_type": "b64_json",
+        "tags": ["自定义"],
+    }
+    # 重写 _generate_single_image 用的字段
+    new_model["env_key"] = "__custom__"
+    _custom_image_models.append(new_model)
+    logger.info(f"新增自定义生图模型: {req.name}")
+    return {"success": True, "model": new_model, "message": f"已添加自定义模型「{req.name}」"}
+
+
+@app.delete("/api/images/models/custom/{model_id}")
+async def delete_custom_image_model(model_id: str):
+    """删除自定义生图模型"""
+    global _custom_image_models
+    before = len(_custom_image_models)
+    _custom_image_models = [m for m in _custom_image_models if m["id"] != model_id]
+    if len(_custom_image_models) < before:
+        return {"success": True, "message": "已删除"}
+    raise HTTPException(status_code=404, detail="模型不存在")
