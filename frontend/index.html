@@ -1609,8 +1609,17 @@
             </div>
             <div class="text-xs text-gray-500">{{ provider.default_model }}</div>
             <div class="text-xs text-indigo-600 mt-1">{{ provider.price_note }}</div>
-            <div class="text-xs text-gray-400 mt-0.5">{{ provider.env_key }}</div>
+            <!-- Gemini 文字模型显示专用变量名和说明 -->
+            <div v-if="key === 'gemini'" class="mt-1">
+              <div class="text-xs text-gray-400">环境变量：<code class="bg-gray-100 px-1 rounded">GEMINI_TEXT_API_KEY</code></div>
+              <div class="text-xs text-yellow-600 mt-0.5">📝 仅用于文字生成，与生图完全分离</div>
+              <div v-if="provider.configured" class="text-xs text-gray-400 mt-0.5">支持中转：<code class="bg-gray-100 px-1 rounded">GEMINI_TEXT_BASE_URL</code></div>
+            </div>
+            <div v-else class="text-xs text-gray-400 mt-0.5">{{ provider.env_key }}</div>
           </div>
+        </div>
+        <div class="mt-3 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
+          ℹ️ <strong>Gemini 文字生成</strong>（GEMINI_TEXT_API_KEY）与 <strong>🍌 Nano Banana 生图</strong>（NANO_BANANA_API_KEY）是两个完全独立的服务，可以使用同一个 API易的 Key，但必须分别填入不同的环境变量。
         </div>
       </div>
 
@@ -1715,15 +1724,15 @@
             </div>
             <div class="space-y-2">
               <div>
-                <label class="text-xs text-gray-500 block mb-1">API Key</label>
-                <input v-model="aiImageKeyForm.gemini_image_api_key" type="password"
-                  :placeholder="aiImageKeyStatus.nano_banana?.configured ? '已配置，输入新 Key 可更新' : 'sk-...（中转 Key）'"
+                <label class="text-xs text-gray-500 block mb-1">API Key <span class="text-gray-300">(环境变量：<code>NANO_BANANA_API_KEY</code>)</span></label>
+                <input v-model="aiImageKeyForm.nano_banana_api_key" type="password"
+                  :placeholder="aiImageKeyStatus.nano_banana?.configured ? '已配置，输入新 Key 可更新' : 'sk-...（API易等中转 Key）'"
                   class="w-full border rounded-lg p-2 text-xs focus:ring-2 focus:ring-purple-300 outline-none" />
               </div>
               <div>
-                <label class="text-xs text-gray-500 block mb-1">API Base URL（中转地址）</label>
-                <input v-model="aiImageKeyForm.gemini_image_api_base" type="text"
-                  :placeholder="aiImageKeyStatus.nano_banana?.base_url || 'https://api.apiyi.com/v1'"
+                <label class="text-xs text-gray-500 block mb-1">API Base URL <span class="text-gray-300">(环境变量：<code>NANO_BANANA_BASE_URL</code>)</span></label>
+                <input v-model="aiImageKeyForm.nano_banana_base_url" type="text"
+                  :placeholder="aiImageKeyStatus.nano_banana?.base_url || 'https://vip.apiyi.com/v1'"
                   class="w-full border rounded-lg p-2 text-xs focus:ring-2 focus:ring-purple-300 outline-none" />
               </div>
             </div>
@@ -3566,8 +3575,8 @@ createApp({
       wanx: { name: '🖌️ 通义万象（阿里云）', configured: false, price: '有免费额度', base_url: '' },
     });
     const aiImageKeyForm = reactive({
-      gemini_image_api_key: '',
-      gemini_image_api_base: '',
+      nano_banana_api_key: '',
+      nano_banana_base_url: '',
       openai_api_key: '',
       openai_image_base_url: '',
       dashscope_api_key: '',
@@ -3593,8 +3602,8 @@ createApp({
       aiImageKeySaveMsg.value = null;
       try {
         const body = {};
-        if (aiImageKeyForm.gemini_image_api_key) body.gemini_image_api_key = aiImageKeyForm.gemini_image_api_key;
-        if (aiImageKeyForm.gemini_image_api_base) body.gemini_image_api_base = aiImageKeyForm.gemini_image_api_base;
+        if (aiImageKeyForm.nano_banana_api_key) body.nano_banana_api_key = aiImageKeyForm.nano_banana_api_key;
+        if (aiImageKeyForm.nano_banana_base_url) body.nano_banana_base_url = aiImageKeyForm.nano_banana_base_url;
         if (aiImageKeyForm.openai_api_key) body.openai_api_key = aiImageKeyForm.openai_api_key;
         if (aiImageKeyForm.openai_image_base_url) body.openai_image_base_url = aiImageKeyForm.openai_image_base_url;
         if (aiImageKeyForm.dashscope_api_key) body.dashscope_api_key = aiImageKeyForm.dashscope_api_key;
@@ -3608,8 +3617,8 @@ createApp({
         });
         if (data.success) {
           aiImageKeySaveMsg.value = { ok: true, text: data.message };
-          aiImageKeyForm.gemini_image_api_key = '';
-          aiImageKeyForm.gemini_image_api_base = '';
+          aiImageKeyForm.nano_banana_api_key = '';
+          aiImageKeyForm.nano_banana_base_url = '';
           aiImageKeyForm.openai_api_key = '';
           aiImageKeyForm.openai_image_base_url = '';
           aiImageKeyForm.dashscope_api_key = '';

@@ -641,7 +641,11 @@ async def get_model_info(db: Session = Depends(get_db)):
                 "models": v["models"],
                 "price_note": v["price_note"],
                 "env_key": v["env_key"],
-                "configured": bool(os.environ.get(v["env_key"], "").strip())
+                # Gemini 文字模型同时检测新旧两个变量名，其他模型只检测新变量名
+                "configured": bool(
+                    os.environ.get(v["env_key"], "").strip() or
+                    (k == "gemini" and os.environ.get("GEMINI_API_KEY", "").strip())
+                )
             }
             for k, v in MODEL_PROVIDERS.items()
         }
@@ -1225,27 +1229,51 @@ async def generate_image_v2(req: ImageGenerateV2Request, db: Session = Depends(g
     }
     image_size = platform_sizes.get(req.platform or "", "1792x1024")
 
-    # ── 方案 0：Nano Banana（Gemini 图像生成，性价比最高）────────────────────
-    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    gemini_base = os.environ.get("GEMINI_IMAGE_API_BASE", "").strip()
-    if gemini_key:
+    # ── 方案 0：Nano Banana via OpenAI-compatible API（中转站，首选）──────────────
+    # 专用 NANO_BANANA_API_KEY + NANO_BANANA_BASE_URL，与文字生成的 Gemini 完全分离
+    nb_key = os.environ.get("NANO_BANANA_API_KEY", "").strip()
+    nb_base = os.environ.get("NANO_BANANA_BASE_URL", "").strip()
+    if nb_key and nb_base:
+        try:
+            from openai import OpenAI as OAI
+            client = OAI(api_key=nb_key, base_url=nb_base)
+            images = []
+            for _ in range(min(req.count, 4)):
+                r = client.images.generate(
+                    model="gemini-2.5-flash-image",
+                    prompt=full_prompt,
+                    n=1,
+                    size=image_size,
+                )
+                images.append({
+                    "url": r.data[0].url,
+                    "source": "🍌 Nano Banana",
+                    "optimized_prompt": final_prompt,
+                })
+            if images:
+                return {
+                    "success": True,
+                    "images": images,
+                    "model": "🍌 Nano Banana（Gemini 2.5 Flash Image）",
+                    "prompt_used": full_prompt,
+                    "optimized_prompt": final_prompt,
+                }
+        except Exception as e:
+            logger.warning(f"Nano Banana（中转）失败: {e}")
+
+    # ── 方案 0b：Nano Banana 官方直连（无中转，需科学上网）──────────────────
+    # 仅当有 NANO_BANANA_API_KEY 但无 BASE_URL 时，走官方接口
+    if nb_key and not nb_base:
         try:
             import httpx as _httpx
-            # 支持自定义中转地址（如 API易、云雾等），默认使用 Google 官方
-            base_url = gemini_base or "https://generativelanguage.googleapis.com/v1beta"
-            # 平台尺寸映射到 Gemini 支持的尺寸
-            gemini_size_map = {
-                "1024x1024": "1:1",
-                "1024x1792": "9:16",
-                "1792x1024": "16:9",
-            }
+            gemini_size_map = {"1024x1024": "1:1", "1024x1792": "9:16", "1792x1024": "16:9"}
             aspect_ratio = gemini_size_map.get(image_size, "16:9")
             images = []
             count = min(req.count, 4)
             async with _httpx.AsyncClient(timeout=60) as hc:
                 resp = await hc.post(
-                    f"{base_url}/models/gemini-2.0-flash-preview-image-generation:generateContent",
-                    params={"key": gemini_key},
+                    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent",
+                    params={"key": nb_key},
                     json={
                         "contents": [{"parts": [{"text": full_prompt}]}],
                         "generationConfig": {
@@ -1263,53 +1291,21 @@ async def generate_image_v2(req: ImageGenerateV2Request, db: Session = Depends(g
                             mime = part["inlineData"].get("mimeType", "image/png")
                             images.append({
                                 "url": f"data:{mime};base64,{b64}",
-                                "source": "Nano Banana（Gemini）",
+                                "source": "🍌 Nano Banana",
                                 "optimized_prompt": final_prompt,
                             })
                 if images:
                     return {
                         "success": True,
                         "images": images,
-                        "model": "Nano Banana（Gemini 2.0 Flash Image）",
+                        "model": "🍌 Nano Banana（Gemini 2.0 Flash Image）",
                         "prompt_used": full_prompt,
                         "optimized_prompt": final_prompt,
                     }
             else:
-                logger.warning(f"Nano Banana 失败: {resp.status_code} {resp.text[:200]}")
+                logger.warning(f"Nano Banana 官方失败: {resp.status_code} {resp.text[:200]}")
         except Exception as e:
-            logger.warning(f"Nano Banana（Gemini）失败: {e}")
-
-    # ── 方案 0b：Nano Banana via OpenAI-compatible API（中转站）────────────────────
-    # 优先用 GEMINI_IMAGE_API_KEY，没有则自动 fallback 到 GEMINI_API_KEY
-    gemini_compat_key = (os.environ.get("GEMINI_IMAGE_API_KEY") or os.environ.get("GEMINI_API_KEY") or "").strip()
-    gemini_compat_base = os.environ.get("GEMINI_IMAGE_API_BASE", "").strip()
-    if gemini_compat_key and gemini_compat_base:
-        try:
-            from openai import OpenAI as OAI
-            client = OAI(api_key=gemini_compat_key, base_url=gemini_compat_base)
-            images = []
-            for _ in range(min(req.count, 4)):
-                r = client.images.generate(
-                    model="gemini-2.5-flash-image",
-                    prompt=full_prompt,
-                    n=1,
-                    size=image_size,
-                )
-                images.append({
-                    "url": r.data[0].url,
-                    "source": "Nano Banana（Gemini）",
-                    "optimized_prompt": final_prompt,
-                })
-            if images:
-                return {
-                    "success": True,
-                    "images": images,
-                    "model": "Nano Banana（Gemini 2.5 Flash Image）",
-                    "prompt_used": full_prompt,
-                    "optimized_prompt": final_prompt,
-                }
-        except Exception as e:
-            logger.warning(f"Nano Banana（中转）失败: {e}")
+            logger.warning(f"Nano Banana（官方）失败: {e}")
 
     # ── 方案 1：DALL-E 3（OpenAI）─────────────────────────────────────────
     openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
@@ -1595,8 +1591,8 @@ async def get_image_api_key_status():
 # ===================== AI 生图 API Key 配置接口 =====================
 
 class AIImageKeyRequest(BaseModel):
-    gemini_image_api_key: Optional[str] = None   # Nano Banana（Gemini）中转 Key
-    gemini_image_api_base: Optional[str] = None  # Nano Banana 中转 Base URL
+    nano_banana_api_key: Optional[str] = None    # 🍌 Nano Banana 专用 Key
+    nano_banana_base_url: Optional[str] = None   # 🍌 Nano Banana 中转 Base URL
     openai_api_key: Optional[str] = None         # DALL-E 3 Key
     openai_image_base_url: Optional[str] = None  # DALL-E 3 中转 Base URL
     dashscope_api_key: Optional[str] = None      # 通义万象 Key
@@ -1609,12 +1605,12 @@ async def save_ai_image_keys(req: AIImageKeyRequest):
     生产环境建议通过 Railway / Docker 环境变量持久化
     """
     updated = []
-    if req.gemini_image_api_key is not None:
-        os.environ["GEMINI_IMAGE_API_KEY"] = req.gemini_image_api_key.strip()
-        updated.append("Nano Banana API Key")
-    if req.gemini_image_api_base is not None:
-        os.environ["GEMINI_IMAGE_API_BASE"] = req.gemini_image_api_base.strip()
-        updated.append("Nano Banana API Base URL")
+    if req.nano_banana_api_key is not None:
+        os.environ["NANO_BANANA_API_KEY"] = req.nano_banana_api_key.strip()
+        updated.append("🍌 Nano Banana API Key")
+    if req.nano_banana_base_url is not None:
+        os.environ["NANO_BANANA_BASE_URL"] = req.nano_banana_base_url.strip()
+        updated.append("🍌 Nano Banana Base URL")
     if req.openai_api_key is not None:
         os.environ["OPENAI_API_KEY"] = req.openai_api_key.strip()
         updated.append("DALL-E 3 API Key")
@@ -1636,11 +1632,16 @@ async def save_ai_image_keys(req: AIImageKeyRequest):
 async def debug_env_check():
     """调试接口：检查所有关键环境变量的配置状态（不暴露 Key 值）"""
     keys_to_check = [
-        "DEEPSEEK_API_KEY", "DASHSCOPE_API_KEY", "GEMINI_API_KEY",
-        "GROQ_API_KEY", "OPENAI_API_KEY", "CLAUDE_API_KEY",
+        # 文字生成
+        "DEEPSEEK_API_KEY", "DASHSCOPE_API_KEY",
+        "GEMINI_TEXT_API_KEY", "GEMINI_TEXT_BASE_URL",  # Gemini 文字专用
+        "GEMINI_API_KEY",  # 旧变量，兼容迁移用
+        "GROQ_API_KEY", "OPENAI_API_KEY", "CLAUDE_API_KEY", "CLAUDE_API_BASE",
+        # 图片生成
+        "NANO_BANANA_API_KEY", "NANO_BANANA_BASE_URL",  # Nano Banana 专用
+        "OPENAI_IMAGE_BASE_URL",
+        # 旧变量（兼容期）
         "GEMINI_IMAGE_API_KEY", "GEMINI_IMAGE_API_BASE",
-        "GEMINI_IMAGE_BASE_URL",  # 旧变量名，检查是否误用
-        "OPENAI_IMAGE_BASE_URL", "OPENAI_BASE_URL", "CLAUDE_API_BASE",
     ]
     result = {}
     for k in keys_to_check:
@@ -1660,12 +1661,12 @@ async def get_ai_image_key_status():
         "success": True,
         "status": {
             "nano_banana": {
-                "configured": bool(os.environ.get("GEMINI_IMAGE_API_KEY") or os.environ.get("GEMINI_API_KEY")),
-                "name": "🍌 Nano Banana（Gemini）",
+                "configured": bool(os.environ.get("NANO_BANANA_API_KEY")),
+                "name": "🍌 Nano Banana",
                 "description": "Google Gemini 图像生成，$0.02/张，性价比最高，推荐首选",
-                "env_key": "GEMINI_IMAGE_API_KEY 或 GEMINI_API_KEY",
-                "base_url": os.environ.get("GEMINI_IMAGE_API_BASE", ""),
-                "base_url_env": "GEMINI_IMAGE_API_BASE",
+                "env_key": "NANO_BANANA_API_KEY",
+                "base_url": os.environ.get("NANO_BANANA_BASE_URL", ""),
+                "base_url_env": "NANO_BANANA_BASE_URL",
                 "apply_url": "https://apiyi.com",
                 "price": "$0.02/张",
             },

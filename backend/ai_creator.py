@@ -28,13 +28,15 @@ MODEL_PROVIDERS = {
         "price_note": "输入 $0.28/1M tokens，输出 $0.42/1M tokens，比 GPT-4o 便宜约 30 倍"
     },
     "gemini": {
-        "name": "Google Gemini",
+        "name": "Google Gemini（文字）",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "env_key": "GEMINI_API_KEY",
+        "env_key": "GEMINI_TEXT_API_KEY",          # 专用于文字生成，与图片生成完全分离
+        "base_url_env": "GEMINI_TEXT_BASE_URL",    # 可选，支持中转站覆盖
         "default_model": "gemini-2.0-flash",       # $0.075/1M input，$0.30/1M output
         "models": {
             "gemini-2.0-flash": "Gemini 2.0 Flash（速度快，价格低）",
             "gemini-2.5-flash-preview-05-20": "Gemini 2.5 Flash（最新版）",
+            "gemini-2.5-pro-preview-06-05": "Gemini 2.5 Pro（最强推理）",
         },
         "price_note": "输入 $0.075/1M tokens，输出 $0.30/1M tokens"
     },
@@ -92,6 +94,25 @@ MODEL_PROVIDERS = {
 DEFAULT_PROVIDER_PRIORITY = ["deepseek", "claude", "gemini", "groq", "qwen", "openai"]
 
 
+def _migrate_legacy_env_vars():
+    """兼容性迁移：将旧环境变量映射到新变量名（仅在内存中，不修改 Railway 配置）"""
+    # GEMINI_API_KEY（旧）→ GEMINI_TEXT_API_KEY（新，文字专用）
+    if not os.environ.get("GEMINI_TEXT_API_KEY") and os.environ.get("GEMINI_API_KEY"):
+        os.environ["GEMINI_TEXT_API_KEY"] = os.environ["GEMINI_API_KEY"]
+        logger.info("🔄 兼容迁移：GEMINI_API_KEY → GEMINI_TEXT_API_KEY（文字生成）")
+    # GEMINI_IMAGE_API_BASE（旧）→ NANO_BANANA_BASE_URL（新）
+    if not os.environ.get("NANO_BANANA_BASE_URL") and os.environ.get("GEMINI_IMAGE_API_BASE"):
+        os.environ["NANO_BANANA_BASE_URL"] = os.environ["GEMINI_IMAGE_API_BASE"]
+        logger.info("🔄 兼容迁移：GEMINI_IMAGE_API_BASE → NANO_BANANA_BASE_URL（图片生成）")
+    # GEMINI_IMAGE_API_KEY（旧）→ NANO_BANANA_API_KEY（新）
+    if not os.environ.get("NANO_BANANA_API_KEY") and os.environ.get("GEMINI_IMAGE_API_KEY"):
+        os.environ["NANO_BANANA_API_KEY"] = os.environ["GEMINI_IMAGE_API_KEY"]
+        logger.info("🔄 兼容迁移：GEMINI_IMAGE_API_KEY → NANO_BANANA_API_KEY（图片生成）")
+
+# 启动时执行兼容迁移
+_migrate_legacy_env_vars()
+
+
 def detect_provider() -> Dict[str, str]:
     """自动检测已配置的 API Key，返回最优提供商信息"""
     for provider_key in DEFAULT_PROVIDER_PRIORITY:
@@ -99,10 +120,12 @@ def detect_provider() -> Dict[str, str]:
         api_key = os.environ.get(config["env_key"], "")
         if api_key and api_key.strip():
             logger.info(f"✅ 检测到 {config['name']} API Key，将使用 {config['default_model']}")
-            # Claude 支持通过 CLAUDE_API_BASE 覆盖官方地址（用于中转）
+            # 支持通过 base_url_env 覆盖官方地址（用于中转）
             base_url = config["base_url"]
             if provider_key == "claude":
                 base_url = os.environ.get("CLAUDE_API_BASE", base_url)
+            elif provider_key == "gemini":
+                base_url = os.environ.get("GEMINI_TEXT_BASE_URL", base_url)
             return {
                 "provider": provider_key,
                 "api_key": api_key.strip(),
