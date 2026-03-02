@@ -1245,8 +1245,17 @@ async def generate_image_v2(req: ImageGenerateV2Request, db: Session = Depends(g
                     n=1,
                     size=image_size,
                 )
+                item = r.data[0]
+                # gemini-2.5-flash-image 返回 base64，需转为 data URL
+                if item.b64_json:
+                    img_url = f"data:image/png;base64,{item.b64_json}"
+                elif item.url:
+                    img_url = item.url
+                else:
+                    logger.warning("Nano Banana 返回数据为空")
+                    continue
                 images.append({
-                    "url": r.data[0].url,
+                    "url": img_url,
                     "source": "🍌 Nano Banana",
                     "optimized_prompt": final_prompt,
                 })
