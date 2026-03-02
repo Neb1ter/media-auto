@@ -1167,6 +1167,7 @@ class ImageGenerateMultiRequest(BaseModel):
     style: str = "realistic"
     platform: Optional[str] = None
     models: List[str]                     # 选中的模型 ID 列表
+    count: int = 1                        # 每个模型生成的张数，总张数 = len(models) * count
 
 @app.post("/api/images/generate/v2")
 async def generate_image_v2(req: ImageGenerateV2Request, db: Session = Depends(get_db)):
@@ -1459,80 +1460,170 @@ async def generate_image_v2(req: ImageGenerateV2Request, db: Session = Depends(g
 
 # ===================== 多模型并行图像生成 =====================
 
-async def _generate_single_model(model_id: str, full_prompt: str, final_prompt: str, image_size: str) -> dict:
-    """单个模型生成一张图片，返回结果字典"""
-    import httpx
-    model_names = {
-        'nano_banana': '🍌 Nano Banana',
-        'dalle3': '🎨 DALL-E 3',
-        'wanx': '🖌️ 通义万象',
-    }
-    name = model_names.get(model_id, model_id)
+from abc import ABC, abstractmethod
 
-    if model_id == 'nano_banana':
-        nb_key = os.environ.get("NANO_BANANA_API_KEY", "").strip()
-        nb_base = os.environ.get("NANO_BANANA_BASE_URL", "").strip()
-        if not nb_key:
-            return {"model_id": model_id, "name": name, "success": False, "error": "未配置 API Key"}
+class ImageGenerator(ABC):
+    """Base class for image generation models"""
+    def __init__(self, model_id: str, display_name: str):
+        self.model_id = model_id
+        self.display_name = display_name
+
+    @abstractmethod
+    async def generate(self, full_prompt: str, final_prompt: str, image_size: str) -> dict:
+        """Generate image and return result dictionary"""
+        pass
+
+    def _get_error_response(self, error: str) -> dict:
+        """Return formatted error response"""
+        return {
+            "model_id": self.model_id,
+            "name": self.display_name,
+            "success": False,
+            "error": str(error)[:120]
+        }
+
+    def _get_success_response(self, url: str) -> dict:
+        """Return formatted success response"""
+        return {
+            "model_id": self.model_id,
+            "name": self.display_name,
+            "success": True,
+            "url": url
+        }
+
+class NanoBananaGenerator(ImageGenerator):
+    def __init__(self):
+        super().__init__("nano_banana", "🍌 Nano Banana")
+        self.api_key = os.environ.get("NANO_BANANA_API_KEY", "").strip()
+        self.base_url = os.environ.get("NANO_BANANA_BASE_URL", "").strip()
+
+    async def generate(self, full_prompt: str, final_prompt: str, image_size: str) -> dict:
+        if not self.api_key:
+            return self._get_error_response("未配置 API Key")
+
         try:
             from openai import OpenAI as OAI
-            if nb_base:
-                client = OAI(api_key=nb_key, base_url=nb_base)
-                r = client.images.generate(model="gemini-2.5-flash-image", prompt=full_prompt, n=1, size=image_size)
-            else:
-                client = OAI(api_key=nb_key)
-                r = client.images.generate(model="gemini-2.5-flash-image", prompt=full_prompt, n=1, size=image_size)
-            item = r.data[0]
+            client = OAI(api_key=self.api_key, base_url=self.base_url) if self.base_url else OAI(api_key=self.api_key)
+            response = client.images.generate(
+                model="gemini-2.5-flash-image",
+                prompt=full_prompt,
+                n=1,
+                size=image_size
+            )
+            item = response.data[0]
             url = f"data:image/png;base64,{item.b64_json}" if item.b64_json else item.url
-            return {"model_id": model_id, "name": name, "success": True, "url": url}
+            return self._get_success_response(url)
         except Exception as e:
-            return {"model_id": model_id, "name": name, "success": False, "error": str(e)[:120]}
+            return self._get_error_response(e)
 
-    elif model_id == 'dalle3':
-        openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
-        openai_base = os.environ.get("OPENAI_IMAGE_BASE_URL", os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")).strip()
-        if not openai_key:
-            return {"model_id": model_id, "name": name, "success": False, "error": "未配置 API Key"}
+class Dalle3Generator(ImageGenerator):
+    def __init__(self):
+        super().__init__("dalle3", "🎨 DALL-E 3")
+        self.api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+        self.base_url = os.environ.get("OPENAI_IMAGE_BASE_URL", 
+                                     os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")).strip()
+
+    async def generate(self, full_prompt: str, final_prompt: str, image_size: str) -> dict:
+        if not self.api_key:
+            return self._get_error_response("未配置 API Key")
+
         try:
             from openai import OpenAI as OAI
-            client = OAI(api_key=openai_key, base_url=openai_base)
-            r = client.images.generate(model="dall-e-3", prompt=full_prompt, n=1, size=image_size, quality="standard")
-            return {"model_id": model_id, "name": name, "success": True, "url": r.data[0].url}
+            client = OAI(api_key=self.api_key, base_url=self.base_url)
+            response = client.images.generate(
+                model="dall-e-3",
+                prompt=full_prompt,
+                n=1,
+                size=image_size,
+                quality="standard"
+            )
+            return self._get_success_response(response.data[0].url)
         except Exception as e:
-            return {"model_id": model_id, "name": name, "success": False, "error": str(e)[:120]}
+            return self._get_error_response(e)
 
-    elif model_id == 'wanx':
-        dashscope_key = os.environ.get("DASHSCOPE_API_KEY", "").strip()
-        if not dashscope_key:
-            return {"model_id": model_id, "name": name, "success": False, "error": "未配置 API Key"}
+class WanxGenerator(ImageGenerator):
+    def __init__(self):
+        super().__init__("wanx", "🖌️ 通义万象")
+        self.api_key = os.environ.get("DASHSCOPE_API_KEY", "").strip()
+
+    async def generate(self, full_prompt: str, final_prompt: str, image_size: str) -> dict:
+        if not self.api_key:
+            return self._get_error_response("未配置 API Key")
+
         try:
-            async with httpx.AsyncClient(timeout=90) as hc:
-                resp = await hc.post(
-                    "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
-                    headers={"Authorization": f"Bearer {dashscope_key}", "X-DashScope-Async": "enable"},
-                    json={"model": "wanx2.1-t2i-turbo", "input": {"prompt": final_prompt}, "parameters": {"size": "1440*960", "n": 1}}
-                )
-            if resp.status_code != 200:
-                return {"model_id": model_id, "name": name, "success": False, "error": f"HTTP {resp.status_code}"}
-            task_id = resp.json()["output"]["task_id"]
-            async with httpx.AsyncClient(timeout=90) as hc:
-                for _ in range(18):
-                    await asyncio.sleep(5)
-                    poll = await hc.get(
-                        f"https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}",
-                        headers={"Authorization": f"Bearer {dashscope_key}"}
-                    )
-                    output = poll.json().get("output", {})
-                    if output.get("task_status") == "SUCCEEDED":
-                        url = output["results"][0]["url"]
-                        return {"model_id": model_id, "name": name, "success": True, "url": url}
-                    elif output.get("task_status") in ("FAILED", "CANCELED"):
-                        return {"model_id": model_id, "name": name, "success": False, "error": "任务失败"}
-            return {"model_id": model_id, "name": name, "success": False, "error": "超时"}
-        except Exception as e:
-            return {"model_id": model_id, "name": name, "success": False, "error": str(e)[:120]}
+            task_id = await self._create_image_task(final_prompt)
+            if not task_id:
+                return self._get_error_response("Failed to create task")
 
-    return {"model_id": model_id, "name": name, "success": False, "error": "未知模型"}
+            result = await self._poll_task_status(task_id)
+            return result
+        except Exception as e:
+            return self._get_error_response(e)
+
+    async def _create_image_task(self, prompt: str) -> Optional[str]:
+        import httpx
+        async with httpx.AsyncClient(timeout=90) as client:
+            response = await client.post(
+                "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "X-DashScope-Async": "enable"
+                },
+                json={
+                    "model": "wanx2.1-t2i-turbo",
+                    "input": {"prompt": prompt},
+                    "parameters": {"size": "1440*960", "n": 1}
+                }
+            )
+            if response.status_code != 200:
+                return None
+            return response.json()["output"]["task_id"]
+
+    async def _poll_task_status(self, task_id: str) -> dict:
+        import httpx
+        async with httpx.AsyncClient(timeout=90) as client:
+            for _ in range(18):
+                await asyncio.sleep(5)
+                response = await client.get(
+                    f"https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}",
+                    headers={"Authorization": f"Bearer {self.api_key}"}
+                )
+                output = response.json().get("output", {})
+                
+                if output.get("task_status") == "SUCCEEDED":
+                    return self._get_success_response(output["results"][0]["url"])
+                elif output.get("task_status") in ("FAILED", "CANCELED"):
+                    return self._get_error_response("任务失败")
+                    
+            return self._get_error_response("超时")
+
+class ImageGeneratorRegistry:
+    """Registry for image generator instances"""
+    def __init__(self):
+        self._generators: Dict[str, ImageGenerator] = {
+            "nano_banana": NanoBananaGenerator(),
+            "dalle3": Dalle3Generator(),
+            "wanx": WanxGenerator()
+        }
+
+    async def generate_single_model(self, model_id: str, full_prompt: str, final_prompt: str, image_size: str) -> dict:
+        """Generate image using specified model"""
+        generator = self._generators.get(model_id)
+        if not generator:
+            return {
+                "model_id": model_id,
+                "name": model_id,
+                "success": False,
+                "error": "未知模型"
+            }
+        return await generator.generate(full_prompt, final_prompt, image_size)
+
+# Global registry instance
+generator_registry = ImageGeneratorRegistry()
+
+# Alias for backward compatibility
+async def _generate_single_model(model_id: str, full_prompt: str, final_prompt: str, image_size: str) -> dict:
+    return await generator_registry.generate_single_model(model_id, full_prompt, final_prompt, image_size)
 
 
 @app.post("/api/images/generate/multi")
@@ -1558,14 +1649,37 @@ async def generate_image_multi(req: ImageGenerateMultiRequest, db: Session = Dep
     }
     image_size = platform_sizes.get(req.platform or "", "1792x1024")
 
-    # 并行调用所有选中模型
-    tasks = [_generate_single_model(mid, full_prompt, final_prompt, image_size) for mid in req.models]
-    results = await asyncio.gather(*tasks)
+    per_model_count = max(1, min(req.count, 4))  # 每个模型最多 4 张
 
+    async def _generate_model_batch(model_id: str) -> dict:
+        """Generate per_model_count images for a single model"""
+        batch_tasks = [_generate_single_model(model_id, full_prompt, final_prompt, image_size) for _ in range(per_model_count)]
+        batch_results = await asyncio.gather(*batch_tasks)
+        images = [r["url"] for r in batch_results if r.get("success") and r.get("url")]
+        errors = [r["error"] for r in batch_results if not r.get("success")]
+        model_names = {
+            'nano_banana': '🍌 Nano Banana',
+            'dalle3': '🎨 DALL-E 3',
+            'wanx': '🖌️ 通义万象',
+        }
+        return {
+            "model_id": model_id,
+            "name": model_names.get(model_id, model_id),
+            "success": len(images) > 0,
+            "images": images,
+            "error": errors[0] if errors and not images else None,
+        }
+
+    # 并行调用所有选中模型
+    model_tasks = [_generate_model_batch(mid) for mid in req.models]
+    results = await asyncio.gather(*model_tasks)
+
+    total_images = sum(len(r["images"]) for r in results if r.get("success"))
     return {
         "success": True,
         "results": list(results),
         "optimized_prompt": final_prompt,
+        "total_images": total_images,
     }
 
 

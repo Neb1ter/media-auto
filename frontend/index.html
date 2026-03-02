@@ -379,28 +379,38 @@
           <!-- 模型选择器 -->
           <div class="bg-white rounded-xl p-5 shadow">
             <div class="flex items-center justify-between mb-3">
-              <h3 class="font-bold text-gray-700">🤖 选择 AI 模型</h3>
-              <span class="text-xs text-gray-400">当前默认：{{ modelInfo.current?.name || '加载中...' }}</span>
+              <h3 class="font-bold text-gray-700">🤖 选择文字模型</h3>
+              <span class="text-xs text-gray-400">默认：{{ modelInfo.current?.name || '加载中...' }}</span>
             </div>
             <!-- 提供商卡片列表 -->
             <div class="space-y-2">
               <div v-for="(prov, key) in modelInfo.providers" :key="key"
                 @click="prov.configured ? selectModelProvider(key) : null"
-                :class="['flex items-center justify-between p-2.5 rounded-lg border-2 transition-all',
-                  !prov.configured ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed' :
-                  selectedModelProvider === key ? 'border-indigo-400 bg-indigo-50 cursor-pointer' :
-                  'border-gray-200 bg-white hover:border-indigo-200 cursor-pointer']">
-                <div class="flex items-center space-x-2">
-                  <span class="text-base">{{ {deepseek: '🐳', claude: '🟠', gemini: '🐍', groq: '⚡', qwen: '🐯', openai: '🤖'}[key] || '🤖' }}</span>
-                  <div>
-                    <div class="text-sm font-medium text-gray-800">{{ prov.name }}</div>
-                    <div class="text-xs text-gray-400">{{ prov.price_note }}</div>
-                  </div>
+                class="relative rounded-xl border-2 p-3 transition-all"
+                :class="[
+                  !prov.configured ? 'border-gray-100 bg-gray-50 cursor-not-allowed' :
+                  selectedModelProvider === key ? 'border-indigo-400 bg-indigo-50 cursor-pointer shadow-sm' :
+                  'border-gray-200 bg-white hover:border-indigo-200 cursor-pointer'
+                ]">
+                <!-- 右上角状态标签 -->
+                <div class="absolute top-2 right-2">
+                  <button v-if="!prov.configured"
+                    @click.stop="activeTab = 'settings'; settingsSubTab = 'text_api'"
+                    class="text-xs text-indigo-500 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-full px-2 py-0.5 transition-colors">
+                    去配置
+                  </button>
+                  <span v-else-if="selectedModelProvider === key"
+                    class="text-xs bg-indigo-500 text-white px-2 py-0.5 rounded-full font-medium">✓ 已选</span>
+                  <span v-else
+                    class="text-xs bg-green-100 text-green-700 border border-green-200 px-2 py-0.5 rounded-full">✅ 已配置</span>
                 </div>
-                <div class="flex items-center space-x-2">
-                  <span v-if="!prov.configured" class="text-xs text-gray-400">未配置</span>
-                  <span v-else-if="selectedModelProvider === key" class="text-xs bg-indigo-500 text-white px-2 py-0.5 rounded-full">✓ 已选</span>
-                  <span v-else class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">可用</span>
+                <!-- 卡片主体 -->
+                <div class="flex items-center space-x-2 pr-16">
+                  <span class="text-xl">{{ {deepseek: '🐳', claude: '🟠', gemini: '🐍', groq: '⚡', qwen: '🐯', openai: '🤖'}[key] || '🤖' }}</span>
+                  <div>
+                    <div class="text-sm font-semibold" :class="prov.configured ? 'text-gray-800' : 'text-gray-400'">{{ prov.name }}</div>
+                    <div class="text-xs text-gray-400 mt-0.5">{{ prov.price_note }}</div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -416,7 +426,7 @@
                 </button>
               </div>
             </div>
-            <!-- 清除选择按钮 -->
+            <!-- 清除选择按鈕 -->
             <div v-if="selectedModelProvider" class="mt-2 text-right">
               <button @click="selectedModelProvider = ''; selectedModelName = ''"
                 class="text-xs text-gray-400 hover:text-gray-600">✕ 恢复默认模型</button>
@@ -2230,9 +2240,11 @@
               </div>
             </div>
             <!-- 生成按鈕 -->
-            <button @click="generateStandaloneImages" :disabled="standaloneImageLoading || !standaloneImagePrompt.trim()"
+            <button @click="generateStandaloneImages" :disabled="standaloneImageLoading || !standaloneImagePrompt.trim() || selectedImageModels.length === 0"
               class="w-full mt-4 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 disabled:from-gray-300 disabled:to-gray-300 text-white rounded-xl py-3 text-sm font-medium shadow-sm">
-              {{ standaloneImageLoading ? '✨ AI 生成中...' : '✨ 开始生成' }}
+              <span v-if="standaloneImageLoading">✨ 生成中...</span>
+              <span v-else-if="selectedImageModels.length === 0">← 请先勾选模型</span>
+              <span v-else>✨ 开始生成（共 {{ selectedImageModels.length * standaloneImageCount }} 张）</span>
             </button>
           </div>
 
@@ -2245,33 +2257,49 @@
             <div class="space-y-2">
               <div v-for="m in availableImageModels" :key="m.id"
                 @click="m.configured && toggleImageModel(m.id)"
-                class="flex items-center justify-between p-2.5 rounded-lg border text-xs transition-all"
+                class="relative rounded-xl border-2 p-3 transition-all"
                 :class="[
-                  m.configured ? 'cursor-pointer hover:border-purple-300' : 'cursor-not-allowed opacity-50',
-                  selectedImageModels.includes(m.id) ? 'border-purple-400 bg-purple-50' : (m.configured ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50')
+                  !m.configured ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed' :
+                  selectedImageModels.includes(m.id) ? 'border-purple-400 bg-purple-50 cursor-pointer shadow-sm' :
+                  'border-slate-200 bg-white hover:border-purple-200 cursor-pointer'
                 ]">
-                <div class="flex items-center space-x-2">
+                <!-- 右上角状态标签 -->
+                <div class="absolute top-2 right-2">
+                  <button v-if="!m.configured"
+                    @click.stop="activeTab = 'settings'; settingsSubTab = 'ai_image'"
+                    class="text-xs text-purple-500 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-full px-2 py-0.5 transition-colors">
+                    去配置
+                  </button>
+                  <span v-else-if="selectedImageModels.includes(m.id)"
+                    class="text-xs bg-purple-500 text-white px-2 py-0.5 rounded-full font-medium">✓ 已选</span>
+                  <span v-else
+                    class="text-xs bg-green-100 text-green-700 border border-green-200 px-2 py-0.5 rounded-full">✅ 已配置</span>
+                </div>
+                <!-- 卡片主体 -->
+                <div class="flex items-center space-x-2 pr-16">
+                  <!-- 自定义复选框 -->
                   <div class="w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0"
-                    :class="selectedImageModels.includes(m.id) ? 'bg-purple-500 border-purple-500' : 'border-gray-300'">
-                    <span v-if="selectedImageModels.includes(m.id)" class="text-white text-xs leading-none">✓</span>
+                    :class="selectedImageModels.includes(m.id) ? 'bg-purple-500 border-purple-500' : (m.configured ? 'border-slate-300' : 'border-gray-200')">
+                    <span v-if="selectedImageModels.includes(m.id)" class="text-white leading-none" style="font-size:10px">✓</span>
                   </div>
+                  <span class="text-xl">{{ {nano_banana: '🍌', dalle3: '🎨', wanx: '🖌️'}[m.id] || '🤖' }}</span>
                   <div>
-                    <div class="font-medium" :class="m.configured ? 'text-gray-800' : 'text-gray-400'">{{ m.name }}</div>
-                    <div class="text-gray-400 mt-0.5">{{ m.price }}
-                      <span v-for="tag in m.tags" :key="tag" class="ml-1 px-1 py-0.5 bg-purple-100 text-purple-600 rounded text-xs">·{{ tag }}</span>
+                    <div class="text-sm font-semibold" :class="m.configured ? 'text-gray-800' : 'text-gray-400'">{{ m.name }}</div>
+                    <div class="text-xs text-gray-400 mt-0.5">{{ m.price }}
+                      <span v-for="tag in m.tags" :key="tag" class="ml-1 px-1.5 py-0.5 bg-purple-100 text-purple-600 rounded-full">·{{ tag }}</span>
                     </div>
                   </div>
                 </div>
-                <span v-if="m.configured" class="text-green-500 text-xs">已就绪</span>
-                <span v-else class="text-gray-300 text-xs">未配置</span>
               </div>
             </div>
-            <div v-if="selectedImageModels.length > 0" class="mt-2 text-xs text-purple-600 font-medium text-center">
-              已选 {{ selectedImageModels.length }} 个模型，将并行生成 {{ selectedImageModels.length }} 张图片
+            <!-- 已选模型提示：展示倍数逻辑 -->
+            <div v-if="selectedImageModels.length > 0" class="mt-3 p-2.5 bg-purple-50 rounded-lg border border-purple-100">
+              <div class="text-xs text-purple-700 font-medium text-center">
+                已选 <span class="font-bold">{{ selectedImageModels.length }}</span> 个模型
+                × <span class="font-bold">{{ standaloneImageCount }}</span> 张
+                = 共生成 <span class="font-bold text-purple-600">{{ selectedImageModels.length * standaloneImageCount }}</span> 张图片
+              </div>
             </div>
-            <button @click="activeTab = 'settings'; settingsSubTab = 'ai_image'" class="w-full mt-3 text-xs text-indigo-500 hover:text-indigo-700 border border-indigo-200 rounded-lg py-1.5">
-              ⚙️ 配置 API Key / 自定义模型 →
-            </button>
           </div>
         </div>
 
@@ -2280,16 +2308,27 @@
           <div class="bg-white rounded-xl p-5 shadow min-h-96">
             <div class="flex items-center justify-between mb-4">
               <h3 class="font-bold text-gray-700">🖼️ 生成结果</h3>
-              <div v-if="standaloneImageGenModel" class="flex items-center space-x-2">
-                <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">🤖 {{ standaloneImageGenModel }}</span>
+              <div class="flex items-center space-x-2">
+                <!-- 单模型模型名标签 -->
+                <span v-if="standaloneImageGenModel && standaloneImageResults.length > 0"
+                  class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">🤖 {{ standaloneImageGenModel }}</span>
+                <!-- 总张数标签 -->
+                <span v-if="standaloneImageResults.length > 0"
+                  class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">共 {{ standaloneImageResults.length }} 张</span>
+                <span v-else-if="multiImageResults.length > 0"
+                  class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">共 {{ multiImageResults.filter(r => r.success).reduce((s, r) => s + (r.images ? r.images.length : 1), 0) }} 张 / {{ multiImageResults.length }} 个模型</span>
               </div>
             </div>
 
             <!-- 生成中状态 -->
             <div v-if="standaloneImageLoading" class="flex flex-col items-center justify-center py-20">
               <div class="text-5xl mb-4 animate-bounce">✨</div>
-              <div class="text-gray-500 font-medium">{{ selectedImageModels.length > 1 ? selectedImageModels.length + ' 个模型并行生成中...' : 'AI 正在创作中...' }}</div>
-              <div class="text-xs text-gray-400 mt-2">请稍候，每个模型独立生成一张</div>
+              <div class="text-gray-500 font-medium">
+                {{ selectedImageModels.length > 1
+                  ? selectedImageModels.length + ' 个模型并行生成中，共 ' + (selectedImageModels.length * standaloneImageCount) + ' 张...'
+                  : 'AI 正在创作 ' + standaloneImageCount + ' 张图片...' }}
+              </div>
+              <div class="text-xs text-gray-400 mt-2">请稍候，每个模型并行独立生成</div>
             </div>
 
             <!-- 空状态 -->
@@ -2306,23 +2345,33 @@
                 <div class="flex items-center justify-between px-4 py-2.5"
                   :class="group.success ? 'bg-purple-50 border-b border-purple-100' : 'bg-red-50 border-b border-red-100'">
                   <span class="text-sm font-bold" :class="group.success ? 'text-purple-700' : 'text-red-600'">{{ group.name }}</span>
-                  <span v-if="!group.success" class="text-xs text-red-500">⚠️ 生成失败: {{ group.error }}</span>
-                  <span v-else class="text-xs text-green-600">✅ 生成成功</span>
+                  <div class="flex items-center space-x-2">
+                    <span v-if="group.success" class="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">
+                      {{ group.images ? group.images.length : 1 }} 张
+                    </span>
+                    <span v-if="!group.success" class="text-xs text-red-500">⚠️ 生成失败: {{ group.error }}</span>
+                    <span v-else class="text-xs text-green-600">✅ 成功</span>
+                  </div>
                 </div>
                 <div v-if="group.success" class="p-3">
-                  <div class="img-card aspect-video group relative">
-                    <img :src="group.url" :alt="group.name + '生成图片'" class="w-full h-full object-cover" loading="lazy" />
-                    <div class="img-overlay">
-                      <div class="flex space-x-2">
-                        <a :href="group.url" target="_blank" download
-                          class="bg-white bg-opacity-90 rounded-full px-3 py-1 text-xs font-medium text-indigo-700 hover:bg-opacity-100">
-                          ⬇️ 下载
-                        </a>
-                        <button @click="copyImageUrl(group.url)"
-                          class="bg-white bg-opacity-90 rounded-full px-3 py-1 text-xs font-medium text-gray-700 hover:bg-opacity-100">
-                          📋 复制链接
-                        </button>
+                  <!-- 多张图片网格展示 -->
+                  <div :class="(group.images && group.images.length > 1) ? 'grid grid-cols-2 gap-2' : ''">
+                    <div v-for="(imgUrl, imgIdx) in (group.images || [group.url])" :key="imgIdx"
+                      class="img-card aspect-video group relative">
+                      <img :src="imgUrl" :alt="group.name + '生成图片' + (imgIdx+1)" class="w-full h-full object-cover" loading="lazy" />
+                      <div class="img-overlay">
+                        <div class="flex space-x-2">
+                          <a :href="imgUrl" target="_blank" download
+                            class="bg-white bg-opacity-90 rounded-full px-3 py-1 text-xs font-medium text-indigo-700 hover:bg-opacity-100">
+                            ⬇️ 下载
+                          </a>
+                          <button @click="copyImageUrl(imgUrl)"
+                            class="bg-white bg-opacity-90 rounded-full px-3 py-1 text-xs font-medium text-gray-700 hover:bg-opacity-100">
+                            📋 复制
+                          </button>
+                        </div>
                       </div>
+                      <div class="img-source-badge">#{{ imgIdx + 1 }}</div>
                     </div>
                   </div>
                 </div>
@@ -3131,7 +3180,6 @@ createApp({
       imageResults.value = [];
       imageGenModel.value = '';
       imageOptimizedPrompt.value = '';
-      // 平台映射
       const platformMap = { '小红书1:1': 'xiaohongshu', '微信16:9': 'wechat', '抖音9:16': 'douyin', '通用': '' };
       const platformKey = platformMap[imagePlatform.value] || '';
       try {
@@ -3626,25 +3674,31 @@ createApp({
       multiImageResults.value = [];
       standaloneImageGenModel.value = '';
       standaloneOptimizedPrompt.value = '';
-      const platformMap = { '小红晦1:1': 'xiaohongshu', '微信16:9': 'wechat', '抖音9:16': 'douyin', '通用': '' };
+      const platformMap = { '小红书1:1': 'xiaohongshu', '微信16:9': 'wechat', '抖音9:16': 'douyin', '通用': '' };
       const platformKey = platformMap[standaloneImagePlatform.value] || '';
+      const count = standaloneImageCount.value;
+      const models = selectedImageModels.value;
+      const totalImages = models.length * count;
+
       try {
-        if (selectedImageModels.value.length > 1) {
-          // 多模型并行生成
+        if (models.length > 1) {
+          // 多模型并行生成：每个模型生成 count 张，共 models.length * count 张
           const data = await fetchAPI('/api/images/generate/multi', {
             method: 'POST',
             body: JSON.stringify({
               prompt: standaloneImagePrompt.value,
               style: standaloneImageStyle.value,
               platform: platformKey || null,
-              models: selectedImageModels.value,
+              models: models,
+              count: count,
             }),
           });
           if (data.success) {
             multiImageResults.value = data.results || [];
             standaloneOptimizedPrompt.value = data.optimized_prompt || '';
             const successCount = data.results.filter(r => r.success).length;
-            showToast(`并行生成完成：${successCount}/${data.results.length} 个模型成功`);
+            const totalGenerated = data.results.reduce((s, r) => s + (r.images ? r.images.length : (r.success ? 1 : 0)), 0);
+            showToast(`生成完成：${successCount}/${data.results.length} 个模型成功，共 ${totalGenerated} 张`);
           } else {
             showToast(data.message || '生成失败', 'error');
           }
@@ -3655,9 +3709,9 @@ createApp({
             body: JSON.stringify({
               prompt: standaloneImagePrompt.value,
               style: standaloneImageStyle.value,
-              count: standaloneImageCount.value,
+              count: count,
               platform: platformKey || null,
-              model: selectedImageModels.value[0],
+              model: models[0],
             }),
           });
           if (data.success) {
