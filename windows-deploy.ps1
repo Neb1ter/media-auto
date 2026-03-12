@@ -47,7 +47,8 @@ function Download($url, $dest) {
 # ════════════════════════════════════════════════════════════
 Step 1 "安装 Python $PythonVer"
 
-$pythonExe = (Get-Command python -ErrorAction SilentlyContinue)?.Source
+$pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+$pythonExe = if ($pythonCmd) { $pythonCmd.Source } else { $null }
 $needPython = $true
 if ($pythonExe) {
     $ver = & python --version 2>&1
