@@ -100,11 +100,6 @@
           <span class="text-purple-200">·</span>
           <span class="text-purple-200">{{ modelInfo.current.model }}</span>
         </span>
-        <!-- 审核状态指示 -->
-        <span class="model-badge text-xs px-3 py-1 rounded-full flex items-center space-x-1">
-          <span :class="moderationEnabled ? 'text-green-300' : 'text-yellow-300'">●</span>
-          <span>{{ moderationEnabled ? 'Qwen 审核已启用' : '仅本地审核' }}</span>
-        </span>
         <span class="text-xs bg-white bg-opacity-20 px-3 py-1 rounded-full">
           {{ stats.articles?.total || 0 }} 篇文章
         </span>
@@ -147,99 +142,7 @@
         </div>
       </div>
 
-      <!-- AI 模型 & 审核状态总览 -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <!-- 当前 AI 模型信息 -->
-        <div class="bg-white rounded-xl p-5 shadow">
-          <h3 class="font-bold text-gray-700 mb-3">🤖 当前 AI 模型</h3>
-          <div v-if="modelInfo.current" class="space-y-3">
-            <div class="flex items-center justify-between p-3 bg-indigo-50 rounded-lg border border-indigo-100">
-              <div>
-                <div class="font-bold text-indigo-800">{{ modelInfo.current.name }}</div>
-                <div class="text-xs text-indigo-500 mt-0.5">{{ modelInfo.current.model }}</div>
-              </div>
-              <div class="text-right">
-                <div class="text-xs text-gray-500">用于内容生成</div>
-                <div class="text-xs text-green-600 font-medium mt-0.5">✅ 已就绪</div>
-              </div>
-            </div>
-            <!-- 审核模型 -->
-            <div class="flex items-center justify-between p-3 rounded-lg border"
-              :class="moderationEnabled ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-200'">
-              <div>
-                <div class="font-bold" :class="moderationEnabled ? 'text-green-800' : 'text-gray-500'">
-                  通义千问 qwen-plus
-                </div>
-                <div class="text-xs mt-0.5" :class="moderationEnabled ? 'text-green-500' : 'text-gray-400'">
-                  用于内容合规审核（Layer 2）
-                </div>
-              </div>
-              <div class="text-right">
-                <span v-if="moderationEnabled" class="status-badge status-success">✅ 已启用</span>
-                <span v-else class="status-badge status-draft">未配置</span>
-                <div class="text-xs text-gray-400 mt-0.5">{{ moderationEnabled ? 'DASHSCOPE_API_KEY' : '需配置 Key' }}</div>
-              </div>
-            </div>
-            <div class="text-xs text-gray-400 bg-gray-50 rounded p-2">
-              💡 DeepSeek 负责生成，Qwen 负责审核，分工明确，成本最优
-            </div>
-          </div>
-          <div v-else class="text-center text-gray-400 py-4 text-sm">加载中...</div>
-        </div>
 
-        <!-- 三层审核说明 -->
-        <div class="bg-white rounded-xl p-5 shadow">
-          <h3 class="font-bold text-gray-700 mb-3">🛡️ 内容审核流水线</h3>
-          <div class="space-y-2">
-            <div class="flex items-start space-x-3 p-2.5 rounded-lg bg-green-50">
-              <span class="layer-dot layer-pass mt-1.5 flex-shrink-0"></span>
-              <div>
-                <div class="text-sm font-medium text-green-800">Layer 1 · 本地敏感词检测</div>
-                <div class="text-xs text-green-600 mt-0.5">毫秒级 · 无需 API Key · 内置金融/营销/平台禁词库</div>
-              </div>
-            </div>
-            <div class="flex items-start space-x-3 p-2.5 rounded-lg"
-              :class="moderationEnabled ? 'bg-blue-50' : 'bg-gray-50'">
-              <span class="layer-dot mt-1.5 flex-shrink-0"
-                :class="moderationEnabled ? 'layer-pass' : 'layer-skip'"></span>
-              <div>
-                <div class="text-sm font-medium" :class="moderationEnabled ? 'text-blue-800' : 'text-gray-500'">
-                  Layer 2 · Qwen 语义审核
-                </div>
-                <div class="text-xs mt-0.5" :class="moderationEnabled ? 'text-blue-600' : 'text-gray-400'">
-                  {{ moderationEnabled ? '通义千问 + 阿里云 CIP · 输出合规评分 0-100' : '需配置 DASHSCOPE_API_KEY 启用' }}
-                </div>
-              </div>
-            </div>
-            <div class="flex items-start space-x-3 p-2.5 rounded-lg bg-purple-50">
-              <span class="layer-dot layer-pass mt-1.5 flex-shrink-0"></span>
-              <div>
-                <div class="text-sm font-medium text-purple-800">Layer 3 · AI 合规改写</div>
-                <div class="text-xs text-purple-600 mt-0.5">自动修复违规内容 · 保持原文风格 · 生成后即时触发</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 平台状态 -->
-      <div class="bg-white rounded-xl p-5 shadow mb-6">
-        <h3 class="font-bold text-gray-700 mb-4">🌐 平台账号状态</h3>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div v-for="p in platforms" :key="p.platform"
-            class="flex items-center justify-between p-3 rounded-lg border">
-            <div class="flex items-center space-x-2">
-              <span class="text-xl">{{ p.icon }}</span>
-              <div>
-                <div class="font-medium text-sm">{{ p.name }}</div>
-                <div class="text-xs text-gray-400">{{ p.type }}</div>
-              </div>
-            </div>
-            <span v-if="p.logged_in" class="status-badge status-success">已登录</span>
-            <span v-else class="status-badge status-draft">未登录</span>
-          </div>
-        </div>
-      </div>
 
       <!-- 最近发布任务 -->
       <div class="bg-white rounded-xl p-5 shadow">
@@ -287,18 +190,6 @@
                   :class="createForm.platform === key ? 'text-indigo-500' : 'text-gray-300'">
                   {{ style.tone }}
                 </div>
-              </div>
-            </div>
-            <!-- 选中平台的差异化说明 -->
-            <div v-if="createForm.platform && platformStyles[createForm.platform]"
-              class="mt-3 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
-              <div class="text-xs font-medium text-indigo-700 mb-1">
-                {{ platformStyles[createForm.platform].name }} 专属风格
-              </div>
-              <div class="text-xs text-indigo-600">{{ platformStyles[createForm.platform].style }}</div>
-              <div v-if="platformStyles[createForm.platform].special_rules?.length" class="mt-1.5 flex flex-wrap gap-1">
-                <span v-for="rule in platformStyles[createForm.platform].special_rules.slice(0,3)" :key="rule"
-                  class="diff-tag bg-indigo-100 text-indigo-700">{{ rule }}</span>
               </div>
             </div>
           </div>
