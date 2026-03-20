@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from loguru import logger
@@ -111,6 +112,37 @@ class PlatformPublisher:
         """检查是否已登录（Cookie 文件是否存在）"""
         return self.cookie_path.exists()
 
+    def get_cookie_info(self) -> Dict[str, Any]:
+        """Return persisted cookie metadata for this platform."""
+        if not self.cookie_path.exists():
+            return {
+                "exists": False,
+                "count": 0,
+                "updated_at": None,
+                "size": 0,
+                "error": "",
+            }
+
+        try:
+            with open(self.cookie_path, "r", encoding="utf-8") as f:
+                cookies = json.load(f)
+            stat = self.cookie_path.stat()
+            return {
+                "exists": True,
+                "count": len(cookies) if isinstance(cookies, list) else 0,
+                "updated_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                "size": stat.st_size,
+                "error": "",
+            }
+        except Exception as e:
+            return {
+                "exists": True,
+                "count": 0,
+                "updated_at": None,
+                "size": 0,
+                "error": str(e),
+            }
+
     def get_login_url(self) -> str:
         return self.config.get("login_url", "")
 
@@ -133,6 +165,30 @@ class PlatformPublisher:
         except Exception as e:
             logger.error(f"加载 Cookie 失败: {e}")
             return False
+
+    def import_cookies(self, cookies: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Persist cookies exported from a real browser session."""
+        if not isinstance(cookies, list) or not cookies:
+            raise ValueError("Cookie JSON 必须是非空数组")
+
+        normalized = []
+        for cookie in cookies:
+            if not isinstance(cookie, dict) or not cookie.get("name") or not cookie.get("value"):
+                raise ValueError("每条 Cookie 至少需要包含 name 和 value")
+            normalized.append(cookie)
+
+        with open(self.cookie_path, "w", encoding="utf-8") as f:
+            json.dump(normalized, f, ensure_ascii=False, indent=2)
+
+        info = self.get_cookie_info()
+        logger.info(f"✅ 已导入 {self.config['name']} Cookie，共 {info['count']} 条")
+        return info
+
+    def clear_cookies(self) -> None:
+        """Delete persisted cookies for a platform."""
+        if self.cookie_path.exists():
+            self.cookie_path.unlink()
+            logger.info(f"🗑️ 已清除 {self.config['name']} Cookie")
 
     async def publish(self, title: str, content: str, tags: List[str] = None,
                       scheduled_time: Optional[str] = None) -> Dict[str, Any]:
@@ -263,6 +319,35 @@ class PublisherManager:
         return GenericPublisher(platform)
 
     @classmethod
+    def parse_cookie_payload(cls, payload: str) -> List[Dict[str, Any]]:
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Cookie JSON 解析失败: {e}") from e
+
+        if isinstance(data, dict) and isinstance(data.get("cookies"), list):
+            data = data["cookies"]
+
+        if not isinstance(data, list):
+            raise ValueError("Cookie 数据必须是数组，或包含 cookies 数组的对象")
+
+        return data
+
+    @classmethod
+    def import_cookies(cls, platform: str, payload: str) -> Dict[str, Any]:
+        publisher = cls.get_publisher(platform)
+        if not publisher:
+            raise ValueError("不支持的平台")
+        return publisher.import_cookies(cls.parse_cookie_payload(payload))
+
+    @classmethod
+    def clear_cookies(cls, platform: str) -> None:
+        publisher = cls.get_publisher(platform)
+        if not publisher:
+            raise ValueError("不支持的平台")
+        publisher.clear_cookies()
+
+    @classmethod
     async def publish_to_platforms(cls, title: str, content: str,
                                    platforms: List[str], tags: List[str] = None,
                                    scheduled_time: Optional[str] = None) -> Dict[str, Any]:
@@ -287,7 +372,14 @@ class PublisherManager:
         """获取所有平台登录状态"""
         status_list = []
         for platform, config in PLATFORM_CONFIGS.items():
-            cookie_path = COOKIES_DIR / config.get("cookie_file", f"{platform}_cookies.json")
+            publisher = cls.get_publisher(platform)
+            cookie_info = publisher.get_cookie_info() if publisher else {
+                "exists": False,
+                "count": 0,
+                "updated_at": None,
+                "size": 0,
+                "error": "",
+            }
             status_list.append({
                 "platform": platform,
                 "name": config["name"],
@@ -295,8 +387,15 @@ class PublisherManager:
                 "type": config.get("type", "article"),
                 "content_type": config.get("content_type", ""),
                 "login_url": config.get("login_url", ""),
-                "logged_in": cookie_path.exists(),
-                "cookie_file": str(cookie_path)
+                "logged_in": cookie_info["exists"] and not cookie_info["error"],
+                "auth_ready": cookie_info["exists"] and not cookie_info["error"],
+                "auth_method": "cookie_import",
+                "auth_label": "已导入 Cookie" if cookie_info["exists"] and not cookie_info["error"] else "未导入 Cookie",
+                "status_hint": "可尝试自动发布" if cookie_info["exists"] and not cookie_info["error"] else "请先登录平台并导出 Cookie JSON 再导入",
+                "cookie_file": str(publisher.cookie_path) if publisher else "",
+                "cookie_count": cookie_info["count"],
+                "cookie_updated_at": cookie_info["updated_at"],
+                "cookie_error": cookie_info["error"],
             })
         return status_list
 

@@ -115,4 +115,4 @@ class SystemLog(Base):
 def init_db():
     """初始化数据库"""
     Base.metadata.create_all(bind=engine)
-    print("✅ 数据库初始化完成")
+    print("数据库初始化完成")

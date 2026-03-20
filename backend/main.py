@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -55,6 +56,8 @@ init_db()
 # 挂载前端静态资源
 if (FRONTEND_DIR / "assets").exists():
     app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIR / "assets")), name="assets")
+
+publish_scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
 
 
 # ===================== Pydantic 模型 =====================
@@ -125,6 +128,12 @@ class AIConfigCreate(BaseModel):
     is_default: bool = False
 
 
+class PlatformCookieImportRequest(BaseModel):
+    cookie_json: str
+    account_name: Optional[str] = ""
+    notes: Optional[str] = ""
+
+
 # ===================== 工具函数 =====================
 
 def get_ai_creator(db: Session, provider: Optional[str] = None, model: Optional[str] = None) -> AICreator:
@@ -150,6 +159,156 @@ def get_ai_creator(db: Session, provider: Optional[str] = None, model: Optional[
     return AICreator()
 
 
+def serialize_publish_task(task: PublishTask) -> Dict[str, Any]:
+    return {
+        "id": task.id,
+        "article_id": task.article_id,
+        "platform": task.platform,
+        "platform_name": PLATFORM_CONFIGS.get(task.platform, {}).get("name", task.platform),
+        "status": task.status,
+        "error_msg": task.error_msg,
+        "result_url": task.result_url,
+        "created_at": task.created_at.isoformat() if task.created_at else None,
+        "published_at": task.published_at.isoformat() if task.published_at else None,
+        "scheduled_at": task.scheduled_at.isoformat() if task.scheduled_at else None,
+    }
+
+
+def upsert_platform_account(
+    db: Session,
+    platform: str,
+    *,
+    account_name: str = "",
+    notes: str = "",
+    status: str = "active",
+) -> PlatformAccount:
+    account = db.query(PlatformAccount).filter(PlatformAccount.platform == platform).first()
+    if not account:
+        account = PlatformAccount(platform=platform)
+        db.add(account)
+
+    publisher = PublisherManager.get_publisher(platform)
+    account.cookie_file = str(publisher.cookie_path) if publisher else ""
+    if account_name:
+        account.account_name = account_name
+    if notes:
+        account.notes = notes
+    account.status = status
+    account.last_check = datetime.now()
+    db.commit()
+    db.refresh(account)
+    return account
+
+
+def build_platform_statuses(db: Session) -> List[Dict[str, Any]]:
+    accounts = {
+        account.platform: account
+        for account in db.query(PlatformAccount).all()
+    }
+    statuses = PublisherManager.get_platform_status()
+    for status in statuses:
+        account = accounts.get(status["platform"])
+        status["account_name"] = account.account_name if account and account.account_name else ""
+        status["notes"] = account.notes if account and account.notes else ""
+        status["last_check"] = account.last_check.isoformat() if account and account.last_check else None
+        status["account_status"] = account.status if account else ("active" if status["auth_ready"] else "missing")
+    return statuses
+
+
+async def execute_publish_job(task_ids: List[int]) -> None:
+    db = SessionLocal()
+    try:
+        tasks = (
+            db.query(PublishTask)
+            .filter(PublishTask.id.in_(task_ids))
+            .order_by(PublishTask.id.asc())
+            .all()
+        )
+        if not tasks:
+            return
+
+        article = db.query(Article).filter(Article.id == tasks[0].article_id).first()
+        if not article:
+            for task in tasks:
+                task.status = "failed"
+                task.error_msg = "关联文章不存在"
+            db.commit()
+            return
+
+        for task in tasks:
+            task.status = "running"
+            task.error_msg = ""
+        db.commit()
+
+        tags = [tag.strip() for tag in (article.tags or "").split(",") if tag.strip()]
+        results = await PublisherManager.publish_to_platforms(
+            article.title,
+            article.content,
+            [task.platform for task in tasks],
+            tags,
+            tasks[0].scheduled_at.isoformat() if tasks[0].scheduled_at else None,
+        )
+
+        success_count = 0
+        for task in tasks:
+            result = results.get(task.platform, {})
+            task.status = "success" if result.get("success") else "failed"
+            task.error_msg = result.get("error", "")
+            task.result_url = result.get("url", "")
+            if result.get("success"):
+                success_count += 1
+                task.published_at = datetime.now()
+
+        if success_count:
+            article.status = "published"
+        db.commit()
+    except Exception as e:
+        logger.exception(f"发布任务执行失败: {e}")
+        db.rollback()
+        for task_id in task_ids:
+            task = db.query(PublishTask).filter(PublishTask.id == task_id).first()
+            if task and task.status in {"pending", "scheduled", "running"}:
+                task.status = "failed"
+                task.error_msg = str(e)
+        db.commit()
+    finally:
+        db.close()
+
+
+def schedule_publish_job(task_ids: List[int], run_at: datetime) -> None:
+    job_id = f"publish:{'-'.join(str(task_id) for task_id in sorted(task_ids))}"
+    publish_scheduler.add_job(
+        execute_publish_job,
+        "date",
+        run_date=run_at,
+        args=[task_ids],
+        id=job_id,
+        replace_existing=True,
+    )
+
+
+def restore_scheduled_jobs() -> None:
+    db = SessionLocal()
+    try:
+        future_tasks = (
+            db.query(PublishTask)
+            .filter(PublishTask.status == "scheduled", PublishTask.scheduled_at != None)
+            .order_by(PublishTask.scheduled_at.asc(), PublishTask.id.asc())
+            .all()
+        )
+        grouped: Dict[tuple, List[int]] = {}
+        for task in future_tasks:
+            if not task.scheduled_at or task.scheduled_at <= datetime.now():
+                continue
+            key = (task.article_id, task.scheduled_at.isoformat())
+            grouped.setdefault(key, []).append(task.id)
+
+        for (_, scheduled_at), task_ids in grouped.items():
+            schedule_publish_job(task_ids, datetime.fromisoformat(scheduled_at))
+    finally:
+        db.close()
+
+
 # ===================== 前端路由 =====================
 
 @app.get("/")
@@ -167,6 +326,19 @@ async def serve_frontend(path: str = ""):
     if index_file.exists():
         return FileResponse(str(index_file))
     raise HTTPException(status_code=404, detail="前端文件未找到")
+
+
+@app.on_event("startup")
+async def startup_event():
+    if not publish_scheduler.running:
+        publish_scheduler.start()
+    restore_scheduled_jobs()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    if publish_scheduler.running:
+        publish_scheduler.shutdown(wait=False)
 
 
 # ===================== API 路由 =====================
@@ -451,9 +623,52 @@ async def delete_article(article_id: int, db: Session = Depends(get_db)):
 # ---- 平台发布 ----
 
 @app.get("/api/platforms")
-async def get_platforms():
+async def get_platforms(db: Session = Depends(get_db)):
     """获取平台列表及登录状态"""
-    return {"platforms": PublisherManager.get_platform_status()}
+    return {"platforms": build_platform_statuses(db)}
+
+
+@app.post("/api/platforms/{platform}/cookies")
+async def import_platform_cookies(
+    platform: str,
+    req: PlatformCookieImportRequest,
+    db: Session = Depends(get_db),
+):
+    """导入平台 Cookie JSON，用于后续自动发布。"""
+    if platform not in PLATFORM_CONFIGS:
+        raise HTTPException(status_code=404, detail="平台不存在")
+
+    try:
+        cookie_info = PublisherManager.import_cookies(platform, req.cookie_json)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    account = upsert_platform_account(
+        db,
+        platform,
+        account_name=req.account_name.strip(),
+        notes=req.notes.strip(),
+        status="active",
+    )
+
+    return {
+        "success": True,
+        "message": f"已导入 {PLATFORM_CONFIGS[platform]['name']} Cookie",
+        "platform": platform,
+        "cookie_info": cookie_info,
+        "account_name": account.account_name or "",
+    }
+
+
+@app.delete("/api/platforms/{platform}/cookies")
+async def clear_platform_cookies(platform: str, db: Session = Depends(get_db)):
+    """清除平台 Cookie。"""
+    if platform not in PLATFORM_CONFIGS:
+        raise HTTPException(status_code=404, detail="平台不存在")
+
+    PublisherManager.clear_cookies(platform)
+    upsert_platform_account(db, platform, status="expired")
+    return {"success": True, "message": f"已清除 {PLATFORM_CONFIGS[platform]['name']} Cookie"}
 
 @app.post("/api/publish")
 async def publish_article(req: PublishRequest, background_tasks: BackgroundTasks,
@@ -463,51 +678,62 @@ async def publish_article(req: PublishRequest, background_tasks: BackgroundTasks
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
+    if not req.platforms:
+        raise HTTPException(status_code=400, detail="请至少选择一个平台")
+
+    platform_statuses = {item["platform"]: item for item in build_platform_statuses(db)}
+    unavailable = [
+        PLATFORM_CONFIGS.get(platform, {}).get("name", platform)
+        for platform in req.platforms
+        if not platform_statuses.get(platform, {}).get("auth_ready")
+    ]
+    if unavailable:
+        raise HTTPException(
+            status_code=400,
+            detail=f"以下平台尚未导入可用 Cookie：{', '.join(unavailable)}",
+        )
+
+    scheduled_at = None
+    should_schedule = False
+    if req.scheduled_at:
+        try:
+            scheduled_at = datetime.fromisoformat(req.scheduled_at)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail="定时发布时间格式不正确") from e
+        if scheduled_at > datetime.now():
+            should_schedule = True
+
     # 创建发布任务记录
     tasks = []
     for platform in req.platforms:
         task = PublishTask(
             article_id=req.article_id,
             platform=platform,
-            status="pending",
-            scheduled_at=datetime.fromisoformat(req.scheduled_at) if req.scheduled_at else None
+            status="scheduled" if should_schedule else "pending",
+            scheduled_at=scheduled_at
         )
         db.add(task)
         tasks.append(task)
     db.commit()
     task_ids = [t.id for t in tasks]
 
-    # 后台执行发布
-    async def do_publish():
-        tags = [t.strip() for t in (article.tags or "").split(",") if t.strip()]
-        results = await PublisherManager.publish_to_platforms(
-            article.title, article.content, req.platforms, tags, req.scheduled_at
-        )
-        # 更新任务状态
-        db2 = SessionLocal()
-        try:
-            for i, platform in enumerate(req.platforms):
-                result = results.get(platform, {})
-                task = db2.query(PublishTask).filter(PublishTask.id == task_ids[i]).first()
-                if task:
-                    task.status = "success" if result.get("success") else "failed"
-                    task.error_msg = result.get("error", "")
-                    task.result_url = result.get("url", "")
-                    if result.get("success"):
-                        task.published_at = datetime.now()
-                        a = db2.query(Article).filter(Article.id == req.article_id).first()
-                        if a:
-                            a.status = "published"
-            db2.commit()
-        finally:
-            db2.close()
+    if should_schedule and scheduled_at:
+        schedule_publish_job(task_ids, scheduled_at)
+        return {
+            "success": True,
+            "message": f"已创建定时发布任务，将于 {scheduled_at.strftime('%Y-%m-%d %H:%M')} 执行",
+            "task_ids": task_ids,
+            "scheduled": True,
+            "scheduled_at": scheduled_at.isoformat(),
+        }
 
-    background_tasks.add_task(do_publish)
+    background_tasks.add_task(execute_publish_job, task_ids)
 
     return {
         "success": True,
         "message": f"已提交发布任务，正在发布到 {len(req.platforms)} 个平台",
-        "task_ids": task_ids
+        "task_ids": task_ids,
+        "scheduled": False,
     }
 
 @app.get("/api/publish/tasks")
@@ -517,20 +743,7 @@ async def get_publish_tasks(skip: int = 0, limit: int = 50, db: Session = Depend
     total = db.query(PublishTask).count()
     return {
         "total": total,
-        "tasks": [
-            {
-                "id": t.id,
-                "article_id": t.article_id,
-                "platform": t.platform,
-                "platform_name": PLATFORM_CONFIGS.get(t.platform, {}).get("name", t.platform),
-                "status": t.status,
-                "error_msg": t.error_msg,
-                "result_url": t.result_url,
-                "created_at": t.created_at.isoformat() if t.created_at else None,
-                "published_at": t.published_at.isoformat() if t.published_at else None,
-            }
-            for t in tasks
-        ]
+        "tasks": [serialize_publish_task(t) for t in tasks]
     }
 
 
@@ -2096,7 +2309,7 @@ def _generate_single_image(model_def: dict, prompt: str, size: str) -> dict:
         return {"model_id": model_id, "name": display_name, "success": False, "error": str(e)[:200]}
 
 
-@app.post("/api/images/generate/multi")
+@app.post("/api/images/generate/custom-multi")
 async def generate_images_multi(req: MultiModelImageRequest, db: Session = Depends(get_db)):
     """
     多模型并行生图接口

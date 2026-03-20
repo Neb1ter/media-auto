@@ -17,5 +17,5 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     with socketserver.TCPServer(("", PORT), Handler) as httpd:
-        print(f"🌐 前端服务运行在 http://0.0.0.0:{PORT}")
+        print(f"前端服务运行在 http://0.0.0.0:{PORT}")
         httpd.serve_forever()

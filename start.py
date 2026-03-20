@@ -40,11 +40,11 @@ async def web_ui():
 if __name__ == "__main__":
     import uvicorn
     print("=" * 60)
-    print("🚀 自媒体运营自动化平台启动中...")
+    print("自媒体运营自动化平台启动中...")
     print("=" * 60)
-    print(f"📁 工作目录: {BASE_DIR}")
-    print(f"🌐 访问地址: http://0.0.0.0:8000")
-    print(f"📖 API 文档: http://0.0.0.0:8000/docs")
-    print(f"🖥️  Web 界面: http://0.0.0.0:8000/web")
+    print(f"工作目录: {BASE_DIR}")
+    print("访问地址: http://0.0.0.0:8000")
+    print("API 文档: http://0.0.0.0:8000/docs")
+    print("Web 界面: http://0.0.0.0:8000/web")
     print("=" * 60)
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=False, log_level="info")
